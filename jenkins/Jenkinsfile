@@ -28,7 +28,8 @@ pipeline {
     stage('Build Docker Image') {
       steps {
         dir('app') {
-          sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} -t ${ECR_REPO}:latest ."
+          //sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} -t ${ECR_REPO}:latest ."
+          sh "docker buildx build --platform linux/amd64 -t ${ECR_REPO}:${IMAGE_TAG} -t ${ECR_REPO}:latest --push ."
         }
       }
     }
