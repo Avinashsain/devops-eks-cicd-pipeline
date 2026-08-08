@@ -19,7 +19,7 @@ pipeline {
     stage('Install & Unit Test') {
       steps {
         dir('app') {
-          sh 'npm ci'
+          sh 'npm ci --cache .npm-cache'
           sh 'npm test'
         }
       }
