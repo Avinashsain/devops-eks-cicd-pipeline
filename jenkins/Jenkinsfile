@@ -25,35 +25,33 @@ pipeline {
       }
     }
 
-    stage('Build Docker Image') {
+    stage('Build & Push Docker Image') {
       steps {
         dir('app') {
-          //sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} -t ${ECR_REPO}:latest ."
-          sh "docker buildx build --platform linux/amd64 -t ${ECR_REPO}:${IMAGE_TAG} -t ${ECR_REPO}:latest --push ."
+          // Single quotes below = Groovy does NOT interpolate $ECR_REPO/$IMAGE_TAG/$AWS_REGION
+          // here; the shell expands them instead. This is what silences the
+          // "secret passed via Groovy String interpolation" warning.
+          sh '''
+            aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
+            docker buildx build --platform linux/amd64 \
+              -t "$ECR_REPO:$IMAGE_TAG" \
+              -t "$ECR_REPO:latest" \
+              --push .
+          '''
         }
-      }
-    }
-
-    stage('Push to ECR') {
-      steps {
-        sh """
-          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-          docker push ${ECR_REPO}:${IMAGE_TAG}
-          docker push ${ECR_REPO}:latest
-        """
       }
     }
 
     stage('Deploy to EKS') {
       steps {
-        sh """
-          aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}
+        sh '''
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
           kubectl apply -f k8s/namespace.yaml
-          sed -e 's|IMAGE_PLACEHOLDER|${ECR_REPO}:${IMAGE_TAG}|' k8s/deployment.yaml | kubectl apply -f -
+          sed -e "s|IMAGE_PLACEHOLDER|$ECR_REPO:$IMAGE_TAG|" k8s/deployment.yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/hpa.yaml
           kubectl apply -f k8s/ingress.yaml
-        """
+        '''
       }
     }
 
