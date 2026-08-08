@@ -19,7 +19,7 @@ spec:
         - name: devops-demo-api
           image: IMAGE_PLACEHOLDER # replaced by Jenkins at deploy time
           ports:
-            - containerPort: 3000
+            - containerPort: 3009
           env:
             - name: APP_VERSION
               value: "1.0.0"
