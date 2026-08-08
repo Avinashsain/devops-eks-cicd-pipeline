@@ -4,7 +4,7 @@ variable "cluster_name" {
 
 variable "cluster_version" {
   type    = string
-  default = "1.29"
+  default = "1.36"
 }
 
 variable "vpc_id" {
@@ -42,7 +42,7 @@ variable "min_size" {
 
 variable "max_size" {
   type    = number
-  default = 3
+  default = 2
 }
 
 variable "tags" {

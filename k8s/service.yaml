@@ -9,4 +9,4 @@ spec:
     app: devops-demo-api
   ports:
     - port: 80
-      targetPort: 3000
+      targetPort: 3009

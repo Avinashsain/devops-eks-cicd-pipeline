@@ -18,9 +18,9 @@ module "vpc" {
 module "ecr" {
   source = "../../modules/ecr"
 
-  repository_name             = "${local.name}-app"
+  repository_name            = "${local.name}-app"
   expire_untagged_after_days = 3
-  tags                        = local.tags
+  tags                       = local.tags
 }
 
 module "eks" {
@@ -34,6 +34,6 @@ module "eks" {
   capacity_type       = "SPOT" # 💰 switch to ON_DEMAND only if Spot capacity is unavailable
   desired_size        = 1
   min_size            = 1
-  max_size            = 3
+  max_size            = 2
   tags                = local.tags
 }

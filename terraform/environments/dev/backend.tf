@@ -4,18 +4,18 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 
-  # Run scripts/bootstrap-backend.sh once (creates the S3 bucket + DynamoDB
-  # lock table) BEFORE the first `terraform init`, then fill in the values below.
+  # Run scripts/bootstrap-backend.sh once
+  # to create the S3 bucket before the first `terraform init`.
   backend "s3" {
-    bucket         = "devops-eks-tfstate-<UNIQUE-SUFFIX>"
-    key            = "dev/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "tf-locks"
-    encrypt        = true
+    bucket       = "capstone-tfstate-b15"
+    key          = "dev/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 

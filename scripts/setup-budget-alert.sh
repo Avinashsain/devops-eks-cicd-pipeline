@@ -6,7 +6,7 @@ EMAIL="${2:?Usage: setup-budget-alert.sh <ACCOUNT_ID> <ALERT_EMAIL>}"
 aws budgets create-budget --account-id "$ACCOUNT_ID" \
   --budget "{
     \"BudgetName\": \"devops-eks-project-budget\",
-    \"BudgetLimit\": {\"Amount\": \"50\", \"Unit\": \"USD\"},
+    \"BudgetLimit\": {\"Amount\": \"5\", \"Unit\": \"USD\"},
     \"TimeUnit\": \"MONTHLY\",
     \"BudgetType\": \"COST\"
   }" \
@@ -15,4 +15,4 @@ aws budgets create-budget --account-id "$ACCOUNT_ID" \
     \"Subscribers\": [{\"SubscriptionType\":\"EMAIL\",\"Address\":\"$EMAIL\"}]
   }]"
 
-echo "Budget alert created — you'll get an email at 80% of \$50."
+echo "Budget alert created — you'll get an email at 80% of \$5."

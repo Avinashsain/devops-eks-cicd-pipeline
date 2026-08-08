@@ -4,7 +4,7 @@ variable "repository_name" {
 
 variable "expire_untagged_after_days" {
   type    = number
-  default = 3
+  default = 2
 }
 
 variable "tags" {
