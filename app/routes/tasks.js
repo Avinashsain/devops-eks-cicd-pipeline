@@ -5,8 +5,16 @@ const router = express.Router();
 let tasks = [
   { id: 1, title: 'Provision infrastructure with Terraform', done: false },
   { id: 2, title: 'Deploy application to EKS', done: false },
+  { id: 3, title: 'Configure CI/CD pipeline', done: false },
+  { id: 4, title: 'Set up monitoring and logging', done: false },
+  { id: 5, title: 'Implement security best practices', done: false },
+  { id: 6, title: 'Conduct load testing and performance tuning', done: false },
+  { id: 7, title: 'Document architecture and processes', done: false },
+  { id: 8, title: 'Train team on new systems and workflows', done: false },
+  { id: 9, title: 'Plan for disaster recovery and backups', done: false },
+  { id: 10, title: 'Review and optimize costs', done: false }
 ];
-let nextId = 3;
+let nextId = 11;
 
 router.get('/', (req, res) => {
   res.json(tasks);
