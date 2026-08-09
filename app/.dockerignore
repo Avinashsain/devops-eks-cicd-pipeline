@@ -4,3 +4,6 @@ npm-debug.log
 .gitignore
 test
 *.md
+.env
+Dockerfile
+.dockerignore
