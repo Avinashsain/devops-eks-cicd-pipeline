@@ -298,7 +298,7 @@ curl http://<ALB_ADDRESS>/api/tasks
 Or paste the URL straight into your browser — plain GETs render as JSON directly.
 
 ![Ingress with ALB address](./docs/screenshots/ingress-address.png)
-*Add a screenshot of `kubectl get ingress` output here once ADDRESS is populated.*
+*`kubectl get ingress -n devops-demo` with a populated ADDRESS (ALB DNS name).*
 
 <a name="step-8"></a>
 ## Step 8 — Install Prometheus + Grafana
@@ -380,10 +380,10 @@ Open `http://localhost:9090`, type `up` in the query box, click **Execute**.
 Check **Status → Targets** for the full scrape target list.
 
 ![Grafana dashboard](./docs/screenshots/grafana-dashboard.png)
-*Add a screenshot of a populated Grafana dashboard (e.g. Kubernetes / Compute Resources / Namespace) here.*
+*Grafana's Kubernetes / Compute Resources / Multi-Cluster dashboard, populated.*
 
 ![Prometheus targets](./docs/screenshots/prometheus-targets.png)
-*Add a screenshot of Status → Targets showing UP targets here.*
+*Still needed: a screenshot of Prometheus's own UI (`localhost:9090` → Status → Targets), showing UP targets.*
 
 ---
 
@@ -432,13 +432,13 @@ bills continuously whether or not you're using it.
 Save your captures into `docs/screenshots/` using these filenames so they
 render automatically in the sections above:
 
-| File | What to capture |
-|---|---|
-| `docs/screenshots/ingress-address.png` | `kubectl get ingress -n devops-demo` showing a populated ADDRESS |
-| `docs/screenshots/grafana-dashboard.png` | A populated Grafana dashboard (Kubernetes / Compute Resources) |
-| `docs/screenshots/prometheus-targets.png` | Prometheus Status → Targets, showing UP targets |
-| `docs/screenshots/jenkins-pipeline-success.png` | A green, "Finished: SUCCESS" Jenkins build |
-| `docs/screenshots/app-response.png` | Browser or `curl` output of `/api/tasks` via the ALB URL |
+| File | What to capture | Status |
+|---|---|---|
+| `docs/screenshots/ingress-address.png` | `kubectl get ingress -n devops-demo` showing a populated ADDRESS | ✅ |
+| `docs/screenshots/grafana-dashboard.png` | A populated Grafana dashboard (Kubernetes / Compute Resources) | ✅ |
+| `docs/screenshots/prometheus-targets.png` | Prometheus Status → Targets, showing UP targets | ❌ still needed — capture from Prometheus's own UI (Step 9), not Grafana's Prometheus dashboard |
+| `docs/screenshots/jenkins-pipeline-success.png` | A green, "Finished: SUCCESS" Jenkins build | ✅ (job overview page; a build-detail page with stage view would be even better) |
+| `docs/screenshots/app-response.png` | Browser or `curl` output of `/api/tasks` via the ALB URL | ✅ |
 
 ```bash
 mkdir -p docs/screenshots
