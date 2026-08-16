@@ -1,7 +1,7 @@
 {
-  "name": "devops-demo-api",
+  "name": "todo-list-api",
   "version": "1.0.0",
-  "description": "Node.js Task API used as the demo workload for the EKS CI/CD pipeline",
+  "description": "Node.js Todo List API backed by MongoDB Atlas, used as the demo workload for the EKS CI/CD pipeline",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,11 +9,19 @@
     "test": "jest --detectOpenHandles"
   },
   "dependencies": {
-    "express": "^4.19.2"
+    "bcryptjs": "^2.4.3",
+    "connect-mongo": "^5.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.1",
+    "mongoose": "^8.9.5",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "supertest": "^7.0.0",
-    "nodemon": "^3.1.0"
+    "mongodb-memory-server": "^10.1.2",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.0.0"
   }
 }

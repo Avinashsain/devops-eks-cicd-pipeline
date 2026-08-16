@@ -1,4 +1,16 @@
-# ---- Build Stage ----
+# ---- Frontend Build Stage ----
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+# vite.config.js sets build.outDir to '../public', so this lands at /public
+RUN npm run build
+
+# ---- Backend Build Stage ----
 FROM node:20-alpine AS builder
 
 # CVE-2026-45447 (libcrypto3/libssl3 heap use-after-free): pull the patched
@@ -9,11 +21,7 @@ RUN apk update && apk upgrade --no-cache
 WORKDIR /app
 
 COPY package*.json ./
-# Using npm install (not npm ci) because this project has no committed
-# package-lock.json — npm ci hard-requires one and fails otherwise.
-# If you add a lockfile later, switch this to `npm ci --omit=dev` for
-# faster, fully reproducible installs.
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # ---- Runtime Stage ----
 FROM node:20-alpine
@@ -29,6 +37,7 @@ ENV NODE_ENV=production
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
+COPY --from=frontend-builder /public ./public
 
 # CVE-2026-13149 / CVE-2026-14257 (brace-expansion), CVE-2024-21538
 # (cross-spawn), CVE-2025-64756 (glob), CVE-2026-26996 / 27903 / 27904
