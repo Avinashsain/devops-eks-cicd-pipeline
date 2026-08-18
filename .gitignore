@@ -59,13 +59,18 @@ aws-exports.js
 credentials
 .aws/
 
+# Real k8s Secret manifests — only the .example.yaml template is committed
+k8s/secret.yaml
+
 ### Jenkins ###
 jenkins_home/
 
 ### OS / Editor ###
 .DS_Store
+.claude
 Thumbs.db
 .vscode/
+.ansible
 .idea/
 *.swp
 
