@@ -429,6 +429,27 @@ button i.bi {
   background: #f1f3f5;
 }
 
+.todo-list li.editing {
+  align-items: stretch;
+}
+
+.todo-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.todo-edit-form input[type='text'] {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.todo-edit-form .actions {
+  justify-content: flex-end;
+}
+
 .todo-list li > span:first-child {
   min-width: 0;
   overflow-wrap: break-word;

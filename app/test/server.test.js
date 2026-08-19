@@ -201,6 +201,45 @@ describe('Todos API', () => {
     expect(missing.statusCode).toBe(404);
   });
 
+  it('lets a user edit their own todo title and tags', async () => {
+    const agent = request.agent(app);
+    await register(agent, 'editor@example.com');
+
+    const created = await agent
+      .post('/api/todos')
+      .send({ title: 'Original title', tags: ['old'] });
+
+    const edited = await agent
+      .patch(`/api/todos/${created.body._id}`)
+      .send({ title: 'Updated title', tags: ['new', 'urgent'] });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.body.title).toBe('Updated title');
+    expect(edited.body.tags).toEqual(['new', 'urgent']);
+
+    const blankTitle = await agent
+      .patch(`/api/todos/${created.body._id}`)
+      .send({ title: '   ' });
+    expect(blankTitle.statusCode).toBe(400);
+
+    const tooLongTitle = await agent
+      .patch(`/api/todos/${created.body._id}`)
+      .send({ title: 'x'.repeat(501) });
+    expect(tooLongTitle.statusCode).toBe(400);
+
+    const tooManyTags = await agent
+      .patch(`/api/todos/${created.body._id}`)
+      .send({ tags: ['a', 'b', 'c', 'd', 'e', 'f'] });
+    expect(tooManyTags.statusCode).toBe(400);
+
+    // Editing someone else's todo should 404, not leak/modify it
+    const otherAgent = request.agent(app);
+    await register(otherAgent, 'noteditor@example.com');
+    const cantEdit = await otherAgent
+      .patch(`/api/todos/${created.body._id}`)
+      .send({ title: 'Hijacked' });
+    expect(cantEdit.statusCode).toBe(404);
+  });
+
   it('keeps todos isolated between users', async () => {
     const agentA = request.agent(app);
     await register(agentA, 'usera@example.com');

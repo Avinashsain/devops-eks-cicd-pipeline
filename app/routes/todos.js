@@ -77,12 +77,55 @@ router.post('/', asyncHandler(async (req, res) => {
 
 router.patch('/:id', asyncHandler(async (req, res) => {
   if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: 'Todo not found' });
-  if (typeof req.body.done !== 'boolean') {
-    return res.status(400).json({ error: 'done (boolean) is required' });
+
+  const { title, done, tags: rawTags } = req.body;
+  const update = {};
+
+  if (title !== undefined) {
+    if (typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'title (non-empty string) is required' });
+    }
+    const trimmed = title.trim();
+    if (trimmed.length > Todo.TITLE_MAX_LENGTH) {
+      return res
+        .status(400)
+        .json({ error: `title must be ${Todo.TITLE_MAX_LENGTH} characters or fewer` });
+    }
+    update.title = trimmed;
   }
+
+  if (rawTags !== undefined) {
+    const tags = normalizeTags(rawTags);
+    if (tags === null) {
+      return res.status(400).json({ error: 'tags must be an array of strings' });
+    }
+    if (tags.length > Todo.TAGS_MAX_COUNT) {
+      return res
+        .status(400)
+        .json({ error: `A todo can have at most ${Todo.TAGS_MAX_COUNT} tags` });
+    }
+    if (tags.some((t) => t.length > Todo.TAG_MAX_LENGTH)) {
+      return res
+        .status(400)
+        .json({ error: `Each tag must be ${Todo.TAG_MAX_LENGTH} characters or fewer` });
+    }
+    update.tags = tags;
+  }
+
+  if (done !== undefined) {
+    if (typeof done !== 'boolean') {
+      return res.status(400).json({ error: 'done must be a boolean' });
+    }
+    update.done = done;
+  }
+
+  if (Object.keys(update).length === 0) {
+    return res.status(400).json({ error: 'title, tags, or done is required' });
+  }
+
   const todo = await Todo.findOneAndUpdate(
     { _id: req.params.id, userId: req.user._id },
-    { done: req.body.done },
+    update,
     { new: true }
   );
   if (!todo) return res.status(404).json({ error: 'Todo not found' });

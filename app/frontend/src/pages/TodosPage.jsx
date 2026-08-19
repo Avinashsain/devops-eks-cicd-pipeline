@@ -23,6 +23,9 @@ export function TodosPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState({});
+  const [editingId, setEditingId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editTagsInput, setEditTagsInput] = useState('');
   const { confirm, dialog } = useConfirm();
 
   const load = async (targetPage, searchTerm) => {
@@ -107,6 +110,35 @@ export function TodosPage() {
     }
   };
 
+  const startEdit = (todo) => {
+    setEditingId(todo._id);
+    setEditTitle(todo.title);
+    setEditTagsInput((todo.tags || []).join(', '));
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
+
+  const handleSaveEdit = async (e, todo) => {
+    e.preventDefault();
+    if (!editTitle.trim()) return;
+    const tags = editTagsInput
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    setPending((prev) => ({ ...prev, [todo._id]: 'edit' }));
+    try {
+      const updated = await api.patch(`/todos/${todo._id}`, { title: editTitle, tags });
+      setTodos((prev) => prev.map((t) => (t._id === todo._id ? updated : t)));
+      setEditingId(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPending((prev) => ({ ...prev, [todo._id]: null }));
+    }
+  };
+
   const emptyMessage =
     total === 0 && !debouncedSearch && !dateFrom && !dateTo
       ? 'No todos yet — add one above.'
@@ -168,6 +200,40 @@ export function TodosPage() {
           <ul className="todo-list">
             {todos.map((todo) => {
               const busy = pending[todo._id];
+
+              if (editingId === todo._id) {
+                return (
+                  <li key={todo._id} className="editing">
+                    <form className="todo-edit-form" onSubmit={(e) => handleSaveEdit(e, todo)}>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        autoFocus
+                      />
+                      <input
+                        type="text"
+                        className="tags-input"
+                        placeholder="Tags (comma separated, optional)"
+                        value={editTagsInput}
+                        onChange={(e) => setEditTagsInput(e.target.value)}
+                      />
+                      <span className="actions">
+                        <button type="submit" disabled={busy === 'edit'}>
+                          <i
+                            className={`bi ${busy === 'edit' ? 'bi-arrow-repeat spin' : 'bi-check-lg'}`}
+                          />{' '}
+                          Save
+                        </button>
+                        <button type="button" onClick={cancelEdit} disabled={busy === 'edit'}>
+                          <i className="bi bi-x-lg" /> Cancel
+                        </button>
+                      </span>
+                    </form>
+                  </li>
+                );
+              }
+
               return (
                 <li key={todo._id} className={todo.done ? 'done' : ''}>
                   <span>
@@ -211,6 +277,13 @@ export function TodosPage() {
                         Done
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => startEdit(todo)}
+                      disabled={!!busy}
+                    >
+                      <i className="bi bi-pencil" /> Edit
+                    </button>
                     <button
                       type="button"
                       className="danger"
