@@ -333,6 +333,174 @@ describe('Todos API', () => {
     const allOfThem = await agent.get('/api/todos');
     expect(allOfThem.body.items).toHaveLength(2);
   });
+
+  it('supports priority on create, edit, and filtering', async () => {
+    const agent = request.agent(app);
+    await register(agent, 'priority@example.com');
+
+    const defaulted = await agent.post('/api/todos').send({ title: 'No priority given' });
+    expect(defaulted.body.priority).toBe('medium');
+
+    const created = await agent
+      .post('/api/todos')
+      .send({ title: 'Urgent thing', priority: 'critical' });
+    expect(created.statusCode).toBe(201);
+    expect(created.body.priority).toBe('critical');
+
+    const badCreate = await agent.post('/api/todos').send({ title: 'Bad', priority: 'nope' });
+    expect(badCreate.statusCode).toBe(400);
+
+    const edited = await agent
+      .patch(`/api/todos/${defaulted.body._id}`)
+      .send({ priority: 'low' });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.body.priority).toBe('low');
+
+    const badEdit = await agent
+      .patch(`/api/todos/${defaulted.body._id}`)
+      .send({ priority: 'nope' });
+    expect(badEdit.statusCode).toBe(400);
+
+    const filtered = await agent.get('/api/todos').query({ priority: 'critical' });
+    expect(filtered.body.items).toHaveLength(1);
+    expect(filtered.body.items[0].title).toBe('Urgent thing');
+  });
+
+  it('supports due dates, including clearing them', async () => {
+    const agent = request.agent(app);
+    await register(agent, 'duedate@example.com');
+
+    const created = await agent
+      .post('/api/todos')
+      .send({ title: 'Has a deadline', dueDate: '2026-12-31T10:00:00.000Z' });
+    expect(created.statusCode).toBe(201);
+    expect(new Date(created.body.dueDate).toISOString()).toBe('2026-12-31T10:00:00.000Z');
+
+    const badDate = await agent.post('/api/todos').send({ title: 'Bad', dueDate: 'not-a-date' });
+    expect(badDate.statusCode).toBe(400);
+
+    const cleared = await agent
+      .patch(`/api/todos/${created.body._id}`)
+      .send({ dueDate: null });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.body.dueDate).toBeNull();
+  });
+
+  it('pins todos to the top regardless of creation order', async () => {
+    const agent = request.agent(app);
+    await register(agent, 'pinning@example.com');
+
+    await agent.post('/api/todos').send({ title: 'First' });
+    const second = await agent.post('/api/todos').send({ title: 'Second' });
+    await agent.post('/api/todos').send({ title: 'Third' });
+
+    await agent.patch(`/api/todos/${second.body._id}`).send({ pinned: true });
+
+    const list = await agent.get('/api/todos');
+    expect(list.body.items[0].title).toBe('Second');
+    expect(list.body.items[0].pinned).toBe(true);
+
+    const badPin = await agent
+      .patch(`/api/todos/${second.body._id}`)
+      .send({ pinned: 'yes' });
+    expect(badPin.statusCode).toBe(400);
+  });
+
+  it('spawns the next occurrence when a recurring todo is completed', async () => {
+    const agent = request.agent(app);
+    await register(agent, 'recurring@example.com');
+
+    const created = await agent.post('/api/todos').send({
+      title: 'Water the plants',
+      recurrence: 'daily',
+      dueDate: '2026-06-01T09:00:00.000Z',
+    });
+    expect(created.statusCode).toBe(201);
+
+    const completed = await agent
+      .patch(`/api/todos/${created.body._id}`)
+      .send({ done: true });
+    expect(completed.statusCode).toBe(200);
+    expect(completed.body.done).toBe(true);
+
+    const list = await agent.get('/api/todos');
+    expect(list.body.items).toHaveLength(2);
+    const nextOccurrence = list.body.items.find((t) => !t.done);
+    expect(nextOccurrence.title).toBe('Water the plants');
+    expect(nextOccurrence.recurrence).toBe('daily');
+    expect(new Date(nextOccurrence.dueDate).toISOString()).toBe('2026-06-02T09:00:00.000Z');
+
+    // Un-completing (or re-completing an already-done todo) must not spawn again
+    const list2 = await agent.get('/api/todos');
+    expect(list2.body.total).toBe(2);
+  });
+});
+
+describe('Projects API', () => {
+  it('supports full project CRUD, scoped to the owner', async () => {
+    const agent = request.agent(app);
+    await register(agent, 'projectowner@example.com');
+
+    const created = await agent.post('/api/projects').send({ name: 'Work' });
+    expect(created.statusCode).toBe(201);
+    expect(created.body.name).toBe('Work');
+
+    const dupe = await agent.post('/api/projects').send({ name: 'Work' });
+    expect(dupe.statusCode).toBe(409);
+
+    const blank = await agent.post('/api/projects').send({ name: '   ' });
+    expect(blank.statusCode).toBe(400);
+
+    const list = await agent.get('/api/projects');
+    expect(list.body).toHaveLength(1);
+
+    const renamed = await agent
+      .patch(`/api/projects/${created.body._id}`)
+      .send({ name: 'Deep Work' });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.body.name).toBe('Deep Work');
+
+    // Another user can't see or modify it
+    const otherAgent = request.agent(app);
+    await register(otherAgent, 'otherprojectuser@example.com');
+    const otherList = await otherAgent.get('/api/projects');
+    expect(otherList.body).toEqual([]);
+    const otherPatch = await otherAgent
+      .patch(`/api/projects/${created.body._id}`)
+      .send({ name: 'Hijacked' });
+    expect(otherPatch.statusCode).toBe(404);
+
+    const del = await agent.delete(`/api/projects/${created.body._id}`);
+    expect(del.statusCode).toBe(204);
+  });
+
+  it('assigns todos to projects and unassigns them when the project is deleted', async () => {
+    const agent = request.agent(app);
+    await register(agent, 'projecttodos@example.com');
+
+    const project = await agent.post('/api/projects').send({ name: 'Launch' });
+
+    const created = await agent
+      .post('/api/todos')
+      .send({ title: 'Ship it', projectId: project.body._id });
+    expect(created.statusCode).toBe(201);
+    expect(created.body.projectId).toBe(project.body._id);
+
+    const badProject = await agent
+      .post('/api/todos')
+      .send({ title: 'Bad project', projectId: '507f1f77bcf86cd799439011' });
+    expect(badProject.statusCode).toBe(400);
+
+    const filtered = await agent.get('/api/todos').query({ projectId: project.body._id });
+    expect(filtered.body.items).toHaveLength(1);
+
+    await agent.delete(`/api/projects/${project.body._id}`);
+
+    const unassigned = (await agent.get('/api/todos')).body.items.find(
+      (t) => t._id === created.body._id
+    );
+    expect(unassigned.projectId).toBeNull();
+  });
 });
 
 describe('Admin API', () => {

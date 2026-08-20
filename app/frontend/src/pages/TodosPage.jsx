@@ -1,12 +1,26 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useProjects } from '../hooks/useProjects';
 import { Pagination } from '../components/Pagination';
 import { DateRangeFilter } from '../components/DateRangeFilter';
-import { formatDate } from '../utils/formatDate';
+import { ProjectManager } from '../components/ProjectManager';
+import { TodoMetaFields } from '../components/TodoMetaFields';
+import { TodoRow } from '../components/TodoRow';
+import { TodoEditRow } from '../components/TodoEditRow';
 import { useConfirm } from '../hooks/useConfirm';
 
 const PAGE_SIZE = 10;
+const PRIORITIES = ['critical', 'high', 'medium', 'low'];
+
+function toDatetimeLocalValue(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
+    d.getMinutes()
+  )}`;
+}
 
 export function TodosPage() {
   const [todos, setTodos] = useState([]);
@@ -17,16 +31,30 @@ export function TodosPage() {
   const debouncedSearch = useDebouncedValue(search);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
+
   const [title, setTitle] = useState('');
   const [tagsInput, setTagsInput] = useState('');
+  const [priority, setPriority] = useState('medium');
+  const [recurrence, setRecurrence] = useState('none');
+  const [projectId, setProjectId] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [adding, setAdding] = useState(false);
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editTagsInput, setEditTagsInput] = useState('');
+  const [editPriority, setEditPriority] = useState('medium');
+  const [editRecurrence, setEditRecurrence] = useState('none');
+  const [editProjectId, setEditProjectId] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+
   const { confirm, dialog } = useConfirm();
+  const { projects, createProject, deleteProject } = useProjects();
 
   const load = async (targetPage, searchTerm) => {
     setLoading(true);
@@ -35,6 +63,8 @@ export function TodosPage() {
       if (searchTerm) params.set('search', searchTerm);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
+      if (priorityFilter) params.set('priority', priorityFilter);
+      if (projectFilter) params.set('projectId', projectFilter);
       const res = await api.get(`/todos?${params.toString()}`);
       setTodos(res.items);
       setTotal(res.total);
@@ -48,12 +78,12 @@ export function TodosPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, dateFrom, dateTo]);
+  }, [debouncedSearch, dateFrom, dateTo, priorityFilter, projectFilter]);
 
   useEffect(() => {
     load(page, debouncedSearch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, debouncedSearch, dateFrom, dateTo]);
+  }, [page, debouncedSearch, dateFrom, dateTo, priorityFilter, projectFilter]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -65,9 +95,16 @@ export function TodosPage() {
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean);
-      await api.post('/todos', { title, tags });
+      const body = { title, tags, priority, recurrence };
+      if (projectId) body.projectId = projectId;
+      if (dueDate) body.dueDate = new Date(dueDate).toISOString();
+      await api.post('/todos', body);
       setTitle('');
       setTagsInput('');
+      setPriority('medium');
+      setRecurrence('none');
+      setProjectId('');
+      setDueDate('');
       await load(page, debouncedSearch);
     } catch (err) {
       setError(err.message);
@@ -86,8 +123,20 @@ export function TodosPage() {
     }
     setPending((prev) => ({ ...prev, [todo._id]: done ? 'done' : 'undo' }));
     try {
-      const updated = await api.patch(`/todos/${todo._id}`, { done });
-      setTodos((prev) => prev.map((t) => (t._id === todo._id ? updated : t)));
+      await api.patch(`/todos/${todo._id}`, { done });
+      await load(page, debouncedSearch);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPending((prev) => ({ ...prev, [todo._id]: null }));
+    }
+  };
+
+  const handleTogglePin = async (todo) => {
+    setPending((prev) => ({ ...prev, [todo._id]: 'pin' }));
+    try {
+      await api.patch(`/todos/${todo._id}`, { pinned: !todo.pinned });
+      await load(page, debouncedSearch);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -114,6 +163,10 @@ export function TodosPage() {
     setEditingId(todo._id);
     setEditTitle(todo.title);
     setEditTagsInput((todo.tags || []).join(', '));
+    setEditPriority(todo.priority || 'medium');
+    setEditRecurrence(todo.recurrence || 'none');
+    setEditProjectId(todo.projectId || '');
+    setEditDueDate(toDatetimeLocalValue(todo.dueDate));
   };
 
   const cancelEdit = () => {
@@ -129,7 +182,14 @@ export function TodosPage() {
       .filter(Boolean);
     setPending((prev) => ({ ...prev, [todo._id]: 'edit' }));
     try {
-      const updated = await api.patch(`/todos/${todo._id}`, { title: editTitle, tags });
+      const updated = await api.patch(`/todos/${todo._id}`, {
+        title: editTitle,
+        tags,
+        priority: editPriority,
+        recurrence: editRecurrence,
+        projectId: editProjectId || null,
+        dueDate: editDueDate ? new Date(editDueDate).toISOString() : null,
+      });
       setTodos((prev) => prev.map((t) => (t._id === todo._id ? updated : t)));
       setEditingId(null);
     } catch (err) {
@@ -139,10 +199,59 @@ export function TodosPage() {
     }
   };
 
+  const projectName = (id) => projects.find((p) => p._id === id)?.name;
+
   const emptyMessage =
-    total === 0 && !debouncedSearch && !dateFrom && !dateTo
+    total === 0 && !debouncedSearch && !dateFrom && !dateTo && !priorityFilter && !projectFilter
       ? 'No todos yet — add one above.'
       : 'No matches.';
+
+  let listContent;
+  if (loading) {
+    listContent = <p className="muted">Loading…</p>;
+  } else if (todos.length === 0) {
+    listContent = <p className="muted">{emptyMessage}</p>;
+  } else {
+    listContent = (
+      <ul className="todo-list">
+        {todos.map((todo) =>
+          editingId === todo._id ? (
+            <TodoEditRow
+              key={todo._id}
+              todo={todo}
+              busy={pending[todo._id]}
+              editTitle={editTitle}
+              setEditTitle={setEditTitle}
+              editTagsInput={editTagsInput}
+              setEditTagsInput={setEditTagsInput}
+              editPriority={editPriority}
+              setEditPriority={setEditPriority}
+              editRecurrence={editRecurrence}
+              setEditRecurrence={setEditRecurrence}
+              editProjectId={editProjectId}
+              setEditProjectId={setEditProjectId}
+              editDueDate={editDueDate}
+              setEditDueDate={setEditDueDate}
+              projects={projects}
+              onSave={handleSaveEdit}
+              onCancel={cancelEdit}
+            />
+          ) : (
+            <TodoRow
+              key={todo._id}
+              todo={todo}
+              busy={pending[todo._id]}
+              projectName={projectName}
+              onToggleDone={handleToggleDone}
+              onTogglePin={handleTogglePin}
+              onEdit={startEdit}
+              onDelete={handleDelete}
+            />
+          )
+        )}
+      </ul>
+    );
+  }
 
   return (
     <div className="page">
@@ -175,7 +284,26 @@ export function TodosPage() {
             onChange={(e) => setTagsInput(e.target.value)}
             disabled={adding}
           />
+          <TodoMetaFields
+            priority={priority}
+            onPriority={setPriority}
+            recurrence={recurrence}
+            onRecurrence={setRecurrence}
+            projectId={projectId}
+            onProjectId={setProjectId}
+            dueDate={dueDate}
+            onDueDate={setDueDate}
+            projects={projects}
+            disabled={adding}
+          />
         </form>
+
+        <ProjectManager
+          projects={projects}
+          onCreate={createProject}
+          onDelete={deleteProject}
+          confirm={confirm}
+        />
 
         <input
           type="search"
@@ -185,6 +313,25 @@ export function TodosPage() {
           onChange={(e) => setSearch(e.target.value)}
         />
 
+        <div className="todo-meta-form">
+          <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
+            <option value="">All priorities</option>
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {p[0].toUpperCase() + p.slice(1)}
+              </option>
+            ))}
+          </select>
+          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+            <option value="">All projects</option>
+            {projects.map((p) => (
+              <option key={p._id} value={p._id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <DateRangeFilter
           from={dateFrom}
           to={dateTo}
@@ -192,115 +339,7 @@ export function TodosPage() {
           onToChange={setDateTo}
         />
 
-        {loading ? (
-          <p className="muted">Loading…</p>
-        ) : todos.length === 0 ? (
-          <p className="muted">{emptyMessage}</p>
-        ) : (
-          <ul className="todo-list">
-            {todos.map((todo) => {
-              const busy = pending[todo._id];
-
-              if (editingId === todo._id) {
-                return (
-                  <li key={todo._id} className="editing">
-                    <form className="todo-edit-form" onSubmit={(e) => handleSaveEdit(e, todo)}>
-                      <input
-                        type="text"
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        autoFocus
-                      />
-                      <input
-                        type="text"
-                        className="tags-input"
-                        placeholder="Tags (comma separated, optional)"
-                        value={editTagsInput}
-                        onChange={(e) => setEditTagsInput(e.target.value)}
-                      />
-                      <span className="actions">
-                        <button type="submit" disabled={busy === 'edit'}>
-                          <i
-                            className={`bi ${busy === 'edit' ? 'bi-arrow-repeat spin' : 'bi-check-lg'}`}
-                          />{' '}
-                          Save
-                        </button>
-                        <button type="button" onClick={cancelEdit} disabled={busy === 'edit'}>
-                          <i className="bi bi-x-lg" /> Cancel
-                        </button>
-                      </span>
-                    </form>
-                  </li>
-                );
-              }
-
-              return (
-                <li key={todo._id} className={todo.done ? 'done' : ''}>
-                  <span>
-                    <i
-                      className={`bi status-icon ${
-                        todo.done ? 'bi-check-circle-fill done' : 'bi-circle pending'
-                      }`}
-                    />{' '}
-                    {todo.title} <span className="muted">— {formatDate(todo.createdAt)}</span>
-                    {todo.tags?.length > 0 && (
-                      <span className="tag-list">
-                        {todo.tags.map((tag) => (
-                          <span key={tag} className="badge tag-badge">
-                            {tag}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                  </span>
-                  <span className="actions">
-                    {todo.done ? (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleDone(todo, false)}
-                        disabled={!!busy}
-                      >
-                        <i
-                          className={`bi ${busy === 'undo' ? 'bi-arrow-repeat spin' : 'bi-arrow-counterclockwise'}`}
-                        />{' '}
-                        Undo
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleDone(todo, true)}
-                        disabled={!!busy}
-                      >
-                        <i
-                          className={`bi ${busy === 'done' ? 'bi-arrow-repeat spin' : 'bi-check-lg'}`}
-                        />{' '}
-                        Done
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => startEdit(todo)}
-                      disabled={!!busy}
-                    >
-                      <i className="bi bi-pencil" /> Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={() => handleDelete(todo)}
-                      disabled={!!busy}
-                    >
-                      <i
-                        className={`bi ${busy === 'delete' ? 'bi-arrow-repeat spin' : 'bi-trash'}`}
-                      />{' '}
-                      Delete
-                    </button>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        {listContent}
 
         <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>

@@ -5,6 +5,7 @@ const MongoStore = require('connect-mongo');
 
 const authRouter = require('./routes/auth');
 const todosRouter = require('./routes/todos');
+const projectsRouter = require('./routes/projects');
 const adminRouter = require('./routes/admin');
 const { connectDB } = require('./db');
 const { loadUser, requireAuth, requireAdmin } = require('./middleware/auth');
@@ -43,6 +44,7 @@ function mountRoutes() {
   app.use(passport.initialize());
   app.use('/api/auth', authRouter);
   app.use('/api/todos', requireAuth, todosRouter);
+  app.use('/api/projects', requireAuth, projectsRouter);
   app.use('/api/admin', requireAuth, requireAdmin, adminRouter);
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

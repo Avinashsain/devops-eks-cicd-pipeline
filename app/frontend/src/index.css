@@ -640,3 +640,115 @@ button i.bi {
 .modal-actions button:first-child:hover {
   background: #d1d5db;
 }
+
+.project-manager {
+  margin-bottom: 1rem;
+}
+
+.project-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.project-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.chip-remove:hover {
+  color: #b91c1c;
+  background: none;
+}
+
+.todo-meta-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.todo-meta-form select,
+.todo-meta-form input[type='datetime-local'] {
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: #fff;
+  color: #1a1a1a;
+  flex: 1;
+  min-width: 130px;
+}
+
+.priority-badge {
+  text-transform: capitalize;
+}
+
+.priority-critical {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.priority-high {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.priority-medium {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.priority-low {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.due-date {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-left: 0.4rem;
+}
+
+.due-date.overdue {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.project-badge {
+  background: #ecfeff;
+  color: #0e7490;
+}
+
+.pin-toggle {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  padding: 0.2rem 0.3rem;
+  font-size: 1rem;
+}
+
+.pin-toggle:hover {
+  background: none;
+  color: #d97706;
+}
+
+.pin-toggle.pinned {
+  color: #d97706;
+}
+
+.recurrence-icon {
+  color: #6b7280;
+  margin-left: 0.3rem;
+}
