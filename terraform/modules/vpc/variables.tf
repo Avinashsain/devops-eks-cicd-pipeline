@@ -12,7 +12,7 @@ variable "vpc_cidr" {
 variable "azs" {
   description = "Availability zones to use (keep to 2 for cost — EKS requires min 2). Leave empty to auto-pick the first 2 available AZs in the current region."
   type        = list(string)
-  default     = []
+  default     = ["us-east-1a", "us-east-1b"]
 }
 
 variable "public_subnet_cidrs" {
