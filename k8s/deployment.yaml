@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: devops-demo-api
+  name: devops-todo-app
   namespace: devops-demo
   labels:
-    app: devops-demo-api
+    app: devops-todo-app
 spec:
-  replicas: 1 # 💰 start at 1; HPA scales up only under real load
+  replicas: 3 # 💰 start at 1; HPA scales up only under real load
   selector:
     matchLabels:
-      app: devops-demo-api
+      app: devops-todo-app
   template:
     metadata:
       labels:
-        app: devops-demo-api
+        app: devops-todo-app
     spec:
       containers:
-        - name: devops-demo-api
+        - name: devops-todo-app
           image: IMAGE_PLACEHOLDER # replaced by Jenkins at deploy time
           ports:
             - containerPort: 3009
