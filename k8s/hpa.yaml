@@ -1,15 +1,15 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: devops-demo-api-hpa
+  name: devops-todo-app-hpa
   namespace: devops-demo
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: devops-demo-api
+    name: devops-todo-app
   minReplicas: 1
-  maxReplicas: 4
+  maxReplicas: 5
   metrics:
     - type: Resource
       resource:

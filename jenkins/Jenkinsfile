@@ -3,7 +3,7 @@ pipeline {
 
   environment {
     AWS_REGION   = 'us-east-1'
-    ECR_REPO     = credentials('ecr-repo-url')       // e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/devops-eks-cicd-dev-app
+    ECR_REPO     = credentials('ecr-repo-url')       // e.g. 251478238405.dkr.ecr.us-east-1.amazonaws.com/devops-eks-cicd-dev-app
     IMAGE_TAG    = "${env.BUILD_NUMBER}"
     CLUSTER_NAME = 'devops-eks-cicd-dev-eks'
   }
@@ -28,30 +28,47 @@ pipeline {
     stage('Build & Push Docker Image') {
       steps {
         dir('app') {
-          // Single quotes below = Groovy does NOT interpolate $ECR_REPO/$IMAGE_TAG/$AWS_REGION
-          // here; the shell expands them instead. This is what silences the
-          // "secret passed via Groovy String interpolation" warning.
-          sh '''
-            aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
-            docker buildx build --platform linux/amd64 \
-              -t "$ECR_REPO:$IMAGE_TAG" \
-              -t "$ECR_REPO:latest" \
-              --push .
-          '''
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-eks-credentials']]) {
+            sh '''
+              aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
+              docker buildx build --platform linux/amd64 \
+                -t "$ECR_REPO:$IMAGE_TAG" \
+                -t "$ECR_REPO:latest" \
+                --push .
+            '''
+          }
         }
       }
     }
 
     stage('Deploy to EKS') {
       steps {
-        sh '''
-          aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
-          kubectl apply -f k8s/namespace.yaml
-          sed -e "s|IMAGE_PLACEHOLDER|$ECR_REPO:$IMAGE_TAG|" k8s/deployment.yaml | kubectl apply -f -
-          kubectl apply -f k8s/service.yaml
-          kubectl apply -f k8s/hpa.yaml
-          kubectl apply -f k8s/ingress.yaml
-        '''
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-eks-credentials'],
+          string(credentialsId: 'MONGODB_URI', variable: 'MONGODB_URI'),
+          string(credentialsId: 'SESSION_SECRET', variable: 'SESSION_SECRET'),
+          string(credentialsId: 'COOKIE_SECURE', variable: 'COOKIE_SECURE'),
+          string(credentialsId: 'GOOGLE_CLIENT_ID', variable: 'GOOGLE_CLIENT_ID'),
+          string(credentialsId: 'GOOGLE_CLIENT_SECRET', variable: 'GOOGLE_CLIENT_SECRET')
+        ]) {
+          sh '''
+            aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+            kubectl apply -f k8s/namespace.yaml
+
+            kubectl create secret generic todo-app-secrets \
+              --namespace devops-demo \
+              --from-literal=MONGODB_URI="$MONGODB_URI" \
+              --from-literal=SESSION_SECRET="$SESSION_SECRET" \
+              --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
+              --from-literal=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
+              --dry-run=client -o yaml | kubectl apply -f -
+
+            sed -e "s|IMAGE_PLACEHOLDER|$ECR_REPO:$IMAGE_TAG|" k8s/deployment.yaml | kubectl apply -f -
+            kubectl apply -f k8s/service.yaml
+            kubectl apply -f k8s/hpa.yaml
+            kubectl apply -f k8s/ingress.yaml
+          '''
+        }
       }
     }
 
@@ -70,7 +87,7 @@ pipeline {
       echo "Pipeline failed — check stage logs above. Wire a Slack/email notifier here for real alerts."
     }
     always {
-      sh 'docker image prune -f' // 💰 don't let build images pile up on the Jenkins host disk
+      sh 'docker image prune -f'
     }
   }
 }

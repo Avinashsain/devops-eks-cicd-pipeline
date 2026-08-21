@@ -1,13 +1,13 @@
-version: "3.9"
-
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    image: devops-demo-api:local
+    image: todo-list-api:local
     ports:
       - "3009:3009"
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - PORT=3009
