@@ -3,7 +3,7 @@ pipeline {
 
   environment {
     AWS_REGION   = 'us-east-1'
-    ECR_REPO     = credentials('ecr-repo-url')       // e.g. 251478238405.dkr.ecr.us-east-1.amazonaws.com/devops-eks-cicd-dev-app
+    ECR_REPO     = credentials('ecr-repo-url') // e.g. 251478238405.dkr.ecr.us-east-1.amazonaws.com/devops-eks-cicd-dev-app
     IMAGE_TAG    = "${env.BUILD_NUMBER}"
     CLUSTER_NAME = 'devops-eks-cicd-dev-eks'
   }
