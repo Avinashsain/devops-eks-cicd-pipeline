@@ -31,13 +31,13 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: todo-app-secrets
-                  key: MONGODB_URI
+                  key: MONGODB_URI #MONGODB URI
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
                   name: todo-app-secrets
                   key: SESSION_SECRET
-            - name: GOOGLE_CLIENT_ID
+            - name: GOOGLE_CLIENT_ID #GOOGLE CLIENT ID 
               valueFrom:
                 secretKeyRef:
                   name: todo-app-secrets
