@@ -311,7 +311,7 @@ describe('Todos API', () => {
 
   it('supports filtering todos by created-date range', async () => {
     const agent = request.agent(app);
-    await register(agent, 'daterange@example.com');
+    await register(agent, 'avinashsain65@gmail.com');
 
     const oldOne = await agent.post('/api/todos').send({ title: 'Old todo' });
     await agent.post('/api/todos').send({ title: 'New todo' });
