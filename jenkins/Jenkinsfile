@@ -43,10 +43,26 @@ pipeline {
 
     stage('Deploy to EKS') {
       steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-eks-credentials']]) {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-eks-credentials'],
+          string(credentialsId: 'MONGODB_URI', variable: 'MONGODB_URI'),
+          string(credentialsId: 'SESSION_SECRET', variable: 'SESSION_SECRET'),
+          string(credentialsId: 'COOKIE_SECURE', variable: 'COOKIE_SECURE'),
+          string(credentialsId: 'GOOGLE_CLIENT_ID', variable: 'GOOGLE_CLIENT_ID'),
+          string(credentialsId: 'GOOGLE_CLIENT_SECRET', variable: 'GOOGLE_CLIENT_SECRET')
+        ]) {
           sh '''
             aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
             kubectl apply -f k8s/namespace.yaml
+
+            kubectl create secret generic todo-app-secrets \
+              --namespace devops-demo \
+              --from-literal=MONGODB_URI="$MONGODB_URI" \
+              --from-literal=SESSION_SECRET="$SESSION_SECRET" \
+              --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
+              --from-literal=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
+              --dry-run=client -o yaml | kubectl apply -f -
+
             sed -e "s|IMAGE_PLACEHOLDER|$ECR_REPO:$IMAGE_TAG|" k8s/deployment.yaml | kubectl apply -f -
             kubectl apply -f k8s/service.yaml
             kubectl apply -f k8s/hpa.yaml
