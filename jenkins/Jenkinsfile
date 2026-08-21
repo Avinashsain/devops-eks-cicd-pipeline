@@ -24,7 +24,7 @@ pipeline {
         }
       }
     }
-
+    //Build & Push Docker Image
     stage('Build & Push Docker Image') {
       steps {
         dir('app') {
