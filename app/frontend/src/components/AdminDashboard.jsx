@@ -41,7 +41,7 @@ export function AdminDashboard() {
     );
   }
 
-  const { users, todos, topUsers } = stats;
+  const { users, todos, projects, topUsers } = stats;
 
   return (
     <>
@@ -60,6 +60,19 @@ export function AdminDashboard() {
           <StatCard icon="bi-card-checklist" label="Total todos" value={todos.total} />
           <StatCard icon="bi-check2-square" label="Completed" value={todos.done} tone="green" />
           <StatCard icon="bi-hourglass-split" label="Pending" value={todos.pending} tone="amber" />
+          <StatCard icon="bi-exclamation-triangle-fill" label="Overdue" value={todos.overdue} tone="red" />
+          <StatCard icon="bi-kanban-fill" label="Projects" value={projects.total} tone="blue" />
+        </div>
+        <div className="stats-grid">
+          <StatCard
+            icon="bi-flag-fill"
+            label="Critical priority"
+            value={todos.byPriority.critical}
+            tone="red"
+          />
+          <StatCard icon="bi-flag-fill" label="High priority" value={todos.byPriority.high} tone="amber" />
+          <StatCard icon="bi-flag-fill" label="Medium priority" value={todos.byPriority.medium} tone="blue" />
+          <StatCard icon="bi-flag-fill" label="Low priority" value={todos.byPriority.low} />
         </div>
       </div>
 

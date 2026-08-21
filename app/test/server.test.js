@@ -557,6 +557,32 @@ describe('Admin API', () => {
     expect(usersAfter.body.items).toHaveLength(1);
   });
 
+  it('includes priority, due date, pinned, recurrence, and project on admin todo listing', async () => {
+    const admin = request.agent(app);
+    await register(admin, 'adminview@example.com');
+
+    const memberAgent = request.agent(app);
+    await register(memberAgent, 'memberview@example.com', 'password123', 'Member View');
+    const project = await memberAgent.post('/api/projects').send({ name: 'Q1 Goals' });
+    await memberAgent.post('/api/todos').send({
+      title: "member's rich todo",
+      priority: 'high',
+      recurrence: 'weekly',
+      pinned: true,
+      dueDate: '2026-01-01T00:00:00.000Z',
+      projectId: project.body._id,
+    });
+
+    const allTodos = await admin.get('/api/admin/todos');
+    expect(allTodos.statusCode).toBe(200);
+    const item = allTodos.body.items[0];
+    expect(item.priority).toBe('high');
+    expect(item.recurrence).toBe('weekly');
+    expect(item.pinned).toBe(true);
+    expect(new Date(item.dueDate).toISOString()).toBe('2026-01-01T00:00:00.000Z');
+    expect(item.project).toEqual({ id: project.body._id, name: 'Q1 Goals' });
+  });
+
   it('supports searching users and todos', async () => {
     const admin = request.agent(app);
     await register(admin, 'searchadmin@example.com');
@@ -614,8 +640,14 @@ describe('Admin API', () => {
 
     const alice = request.agent(app);
     await register(alice, 'alicestats@example.com', 'password123', 'Alice Stats');
-    const t1 = await alice.post('/api/todos').send({ title: 'Task one' });
-    await alice.post('/api/todos').send({ title: 'Task two' });
+    const project = await alice.post('/api/projects').send({ name: 'Alice Project' });
+    const t1 = await alice.post('/api/todos').send({ title: 'Task one', priority: 'critical' });
+    await alice.post('/api/todos').send({
+      title: 'Overdue task',
+      priority: 'high',
+      dueDate: '2020-01-01T00:00:00.000Z',
+      projectId: project.body._id,
+    });
     await alice.patch(`/api/todos/${t1.body._id}`).send({ done: true });
 
     const bob = request.agent(app);
@@ -630,7 +662,14 @@ describe('Admin API', () => {
     const stats = await admin.get('/api/admin/stats');
     expect(stats.statusCode).toBe(200);
     expect(stats.body.users).toEqual({ total: 3, active: 2, inactive: 1, admins: 1, regular: 2 });
-    expect(stats.body.todos).toEqual({ total: 3, done: 1, pending: 2 });
+    expect(stats.body.todos).toEqual({
+      total: 3,
+      done: 1,
+      pending: 2,
+      overdue: 1,
+      byPriority: { critical: 1, high: 1, medium: 1, low: 0 },
+    });
+    expect(stats.body.projects).toEqual({ total: 1 });
     expect(stats.body.topUsers[0]).toMatchObject({
       fullName: 'Alice Stats',
       todoCount: 2,

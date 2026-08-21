@@ -2,6 +2,7 @@ const express = require('express');
 const { isValidObjectId } = require('mongoose');
 const User = require('../models/User');
 const Todo = require('../models/Todo');
+const Project = require('../models/Project');
 const asyncHandler = require('../utils/asyncHandler');
 const escapeRegex = require('../utils/escapeRegex');
 const { parsePagination, paginatedResponse } = require('../utils/pagination');
@@ -10,12 +11,25 @@ const parseDateRange = require('../utils/dateRange');
 const router = express.Router();
 
 router.get('/stats', asyncHandler(async (req, res) => {
-  const [totalUsers, activeUsers, adminUsers, totalTodos, doneTodos, topUsers] = await Promise.all([
+  const [
+    totalUsers,
+    activeUsers,
+    adminUsers,
+    totalTodos,
+    doneTodos,
+    overdueTodos,
+    totalProjects,
+    priorityRows,
+    topUsers,
+  ] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ active: true }),
     User.countDocuments({ role: 'admin' }),
     Todo.countDocuments(),
     Todo.countDocuments({ done: true }),
+    Todo.countDocuments({ done: false, dueDate: { $lt: new Date() } }),
+    Project.countDocuments(),
+    Todo.aggregate([{ $group: { _id: '$priority', count: { $sum: 1 } } }]),
     Todo.aggregate([
       {
         $group: {
@@ -41,6 +55,11 @@ router.get('/stats', asyncHandler(async (req, res) => {
     ]),
   ]);
 
+  const byPriority = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const row of priorityRows) {
+    if (row._id in byPriority) byPriority[row._id] = row.count;
+  }
+
   res.json({
     users: {
       total: totalUsers,
@@ -53,6 +72,11 @@ router.get('/stats', asyncHandler(async (req, res) => {
       total: totalTodos,
       done: doneTodos,
       pending: totalTodos - doneTodos,
+      overdue: overdueTodos,
+      byPriority,
+    },
+    projects: {
+      total: totalProjects,
     },
     topUsers,
   });
@@ -136,7 +160,8 @@ router.get('/todos', asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('userId', 'fullName email'),
+      .populate('userId', 'fullName email')
+      .populate('projectId', 'name'),
     Todo.countDocuments(filter),
   ]);
 
@@ -145,11 +170,16 @@ router.get('/todos', asyncHandler(async (req, res) => {
     title: t.title,
     done: t.done,
     tags: t.tags,
+    priority: t.priority,
+    dueDate: t.dueDate,
+    pinned: t.pinned,
+    recurrence: t.recurrence,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
     user: t.userId
       ? { id: t.userId._id, fullName: t.userId.fullName, email: t.userId.email }
       : null,
+    project: t.projectId ? { id: t.projectId._id, name: t.projectId.name } : null,
   }));
 
   res.json(paginatedResponse(items, total, page, limit));

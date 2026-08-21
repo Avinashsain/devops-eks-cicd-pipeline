@@ -269,18 +269,36 @@ export function AdminPage() {
             <ul className="todo-list">
               {todos.map((t) => {
                 const busy = pendingTodo[t._id];
+                const overdue = t.dueDate && !t.done && new Date(t.dueDate) < new Date();
                 return (
                   <li key={t._id} className={t.done ? 'done' : ''}>
                     <span>
+                      {t.pinned && <i className="bi bi-star-fill pin-toggle pinned" />}{' '}
                       <i
                         className={`bi status-icon ${
                           t.done ? 'bi-check-circle-fill done' : 'bi-circle pending'
                         }`}
                       />{' '}
                       {t.title}{' '}
+                      <span className={`badge priority-badge priority-${t.priority}`}>
+                        {t.priority}
+                      </span>{' '}
+                      {t.project && <span className="badge project-badge">{t.project.name}</span>}{' '}
+                      {t.recurrence !== 'none' && (
+                        <i
+                          className="bi bi-arrow-repeat recurrence-icon"
+                          title={`Repeats ${t.recurrence}`}
+                        />
+                      )}
                       <span className="muted">
                         — {t.user?.fullName ?? 'unknown user'} — {formatDate(t.createdAt)}
                       </span>
+                      {t.dueDate && (
+                        <span className={`due-date ${overdue ? 'overdue' : ''}`}>
+                          <i className="bi bi-calendar-event" /> Due {formatDate(t.dueDate)}
+                          {overdue ? ' (overdue)' : ''}
+                        </span>
+                      )}
                       {t.tags?.length > 0 && (
                         <span className="tag-list">
                           {t.tags.map((tag) => (
