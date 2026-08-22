@@ -87,7 +87,7 @@ AWS ECR  ───────────────────────�
 
 ```
 devops-eks-cicd-pipeline/
-├── app/                    # Node.js/Express Task API (real, tested)
+├── app/                    # Node.js/Express TODO APP (real, tested)
 ├── terraform/
 │   ├── modules/{vpc,eks,ecr}/
 │   └── environments/dev/
