@@ -51,6 +51,7 @@ This is the standard "app is private, only the front door is public" pattern.
 ### Internet Gateway (IGW)
 **What:** The one thing that lets *anything* in a VPC reach the public
 internet at all.
+
 **Why needed:** Without it, nothing in the VPC — public or private
 subnet — has any path out. It's attached once per VPC and referenced by
 route tables.
