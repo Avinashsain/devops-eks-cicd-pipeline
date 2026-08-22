@@ -590,7 +590,7 @@ bills continuously whether or not you're using it.
 <a name="screenshots"></a>
 ## Screenshots
 
-<video src="./docs/project-walkthrough.mp4" controls width="100%"></video>
+<video src="https://drive.google.com/file/d/1O3LFaOx_DKz5K0Txc5OFz4HWpv_h2d0v/view" controls width="100%"></video>
 
 *All 83 screenshots below, stitched into one slideshow in the same order as
 this README (~2m46s). GitHub doesn't autoplay repo-relative video in
