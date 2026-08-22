@@ -590,6 +590,9 @@ bills continuously whether or not you're using it.
 <a name="screenshots"></a>
 ## Screenshots
 
+**[▶ Watch the walkthrough video](./docs/project-walkthrough.mp4)** — all 83 screenshots
+below, stitched into one slideshow in the same order as this README (~2m46s).
+
 All current captures live in `docs/updated-screenshots/` and are embedded
 throughout the sections above (infra provisioning, kubectl, ECR/pods, ALB,
 application UI, monitoring dashboards, HPA/load test, teardown). The table
