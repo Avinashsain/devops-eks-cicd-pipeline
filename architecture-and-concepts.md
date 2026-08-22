@@ -27,8 +27,28 @@ capture set (infra, app, monitoring, scaling, teardown) lives in
 
 ---
 
-<a name="networking"></a>
 ## 1. Networking layer: VPC, Subnets, IGW, NAT, Elastic IP
+
+### At a glance
+
+Concrete layout provisioned by `terraform/modules/vpc` for the `dev` environment:
+
+| Resource | CIDR / detail | AZ |
+|---|---|---|
+| VPC | `10.0.0.0/16` | — |
+| Public subnet 0 | `10.0.101.0/24` (`kubernetes.io/role/elb=1`) | `us-east-1a` |
+| Public subnet 1 | `10.0.102.0/24` (`kubernetes.io/role/elb=1`) | `us-east-1b` |
+| Private subnet 0 | `10.0.1.0/24` (`kubernetes.io/role/internal-elb=1`) | `us-east-1a` |
+| Private subnet 1 | `10.0.2.0/24` (`kubernetes.io/role/internal-elb=1`) | `us-east-1b` |
+| NAT Gateway | 1 shared (`single_nat_gateway = true`), in public subnet 0 | `us-east-1a` |
+
+Routing: the single public route table (`0.0.0.0/0 → IGW`) is associated to both
+public subnets; each private subnet gets its own route table, but both send
+`0.0.0.0/0` to the same shared NAT Gateway. The subnet role tags above are what
+let the AWS Load Balancer Controller auto-discover which subnets to place
+internet-facing vs. internal ELBs in. The VPC's implicit default security
+group is also explicitly managed with no rules, closing the normally
+wide-open AWS default.
 
 ### VPC (Virtual Private Cloud)
 **What:** An isolated, private network inside AWS — your own slice of AWS
