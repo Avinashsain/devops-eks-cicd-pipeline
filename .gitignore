@@ -76,3 +76,6 @@ Thumbs.db
 
 ### Logs ###
 *.log
+
+### SH FILE ###
+*.sh text eol=lf

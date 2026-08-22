@@ -11,7 +11,7 @@ terraform {
   # Run scripts/bootstrap-backend.sh once
   # to create the S3 bucket before the first `terraform init`.
   backend "s3" {
-    bucket       = "capstone-tfstate-b15"
+    bucket       = "devops-terraform-state-sandeep-2026"
     key          = "dev/terraform.tfstate"
     region       = "us-east-1"
     use_lockfile = true
