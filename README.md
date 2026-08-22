@@ -46,7 +46,7 @@ AWS ECR  ───────────────────────�
                                               │
                                      ┌────────┴─────────┐
                                      │  devops-demo ns   │
-                                     │  Deployment (1)   │──HPA (1-4)
+                                     │  Deployment (3)   │──HPA (1-5)
                                      │  Service (ClusterIP)
                                      │  Ingress (ALB)     │
                                      └────────┬──────────┘
@@ -62,6 +62,23 @@ AWS ECR  ───────────────────────�
                                      │  Alertmanager      │
                                      └───────────────────┘
 ```
+
+**This running, end to end:**
+
+![Cluster nodes and pods](./docs/updated-screenshots/kubectl-get-nodes-and-pods.png)
+*The EKS cluster: worker node + pods across namespaces, all `Running`.*
+
+![Application pods in devops-demo](./docs/updated-screenshots/Application-Pods.png)
+*The `devops-demo` namespace — the app's Deployment pods, `Running`.*
+
+![ALB, internet-facing](./docs/updated-screenshots/ALB.png)
+*The Application Load Balancer the Ingress controller provisioned.*
+
+![App reachable through the ALB](./docs/updated-screenshots/ALB-API-Test.png)
+*The app served end-to-end through that ALB.*
+
+![Monitoring namespace: Grafana](./docs/updated-screenshots/grafana-dashboard.png)
+*The `monitoring` namespace — Grafana querying Prometheus, dashboards populated.*
 
 ## Repo layout
 

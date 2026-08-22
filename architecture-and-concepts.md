@@ -113,7 +113,7 @@ any inbound route.
 ---
 
 <a name="state"></a>
-## 2. Terraform state: S3 + DynamoDB
+## 2. Terraform state: S3 (native locking) + an unused DynamoDB table
 
 ### S3 bucket (remote state backend)
 **What:** Terraform tracks every resource it manages in a "state file"
@@ -125,31 +125,35 @@ infrastructure again) and can't be shared with teammates or CI/CD
 pipelines. Storing it in S3 makes it durable, versioned (you can roll
 back to a previous state file), and centrally accessible.
 
-### DynamoDB table (state locking)
-**What:** A tiny key-value table (`tf-locks`) that Terraform uses purely
-as a mutex/lock.
-**Why needed:** If two people (or two Jenkins builds) run `terraform
-apply` at the same time against the same state, you can corrupt it or
-create duplicate/conflicting resources. DynamoDB's `LockID` mechanism
-means only one `apply` can proceed at a time — the second one waits or
-errors instead of racing the first.
-**Why DynamoDB specifically, not something else:** It's the backend
-Terraform's S3 integration natively supports for locking, it's
-pay-per-request (near-$0 for a single-user project), and it needs no
-servers to manage.
+### State locking — S3 native lockfile, not DynamoDB
+**What actually locks state in this project:** `terraform/environments/dev/backend.tf`
+sets `use_lockfile = true` on the `s3` backend — Terraform ≥1.10's native
+S3-object-based locking (a `.tflock` object written alongside the state
+file), not the classic `dynamodb_table` attribute.
+**Why this matters:** `scripts/bootstrap-backend.sh` *also* creates a
+`tf-locks` DynamoDB table (the traditional pre-1.10 locking mechanism),
+but `backend.tf` never references it — no `dynamodb_table = "tf-locks"`
+line. The table exists in AWS (see screenshot below) but is currently
+dead weight; only the S3 lockfile is doing real locking. If you're
+paying for anything here, it's a stale table, not a load-bearing one —
+worth deleting, or worth wiring `dynamodb_table` back in if you want
+belt-and-suspenders locking across a Terraform version downgrade.
+**Why S3-native locking is enough on its own:** It gives the same
+single-writer guarantee (only one `apply` can hold the lockfile at a
+time) without a second AWS resource to create, tag, and pay for.
 
 **Commands:**
 ```bash
 ./scripts chmod +x bootstrap-backend.sh
-./scripts/bootstrap-backend.sh <bucket-name> us-east-1   # creates both, one-time
-cd terraform/environments/dev && terraform init          # connects to them
+./scripts/bootstrap-backend.sh <bucket-name> us-east-1   # creates the bucket (+ the now-unused tf-locks table)
+cd terraform/environments/dev && terraform init          # connects to the S3 backend; locking is via use_lockfile
 ```
 
 ![S3 state bucket](./docs/updated-screenshots/buckets-capstone-tfstate-b15.png)
-*The S3 bucket holding `terraform.tfstate`.*
+*The S3 bucket holding `terraform.tfstate` — this is what's actually load-bearing.*
 
 ![DynamoDB lock table](./docs/updated-screenshots/dy-tf-locks.png)
-*The `tf-locks` DynamoDB table — one item per in-flight `apply`.*
+*The `tf-locks` DynamoDB table created by `bootstrap-backend.sh` — currently unreferenced by `backend.tf`.*
 
 ---
 
@@ -300,6 +304,11 @@ keep them healthy, and roll out updates without downtime."
 **Why:** Without it, you'd be manually running `docker run` on a node and
 manually restarting it if it crashed. The Deployment controller's
 reconciliation loop does this forever, automatically.
+**As actually configured:** `k8s/deployment.yaml` sets `replicas: 3`,
+above the HPA's `minReplicas: 1` (below) — the HPA only ever scales up
+from the Deployment's current replica count, never below it, so this
+app never idles down to 1 pod in practice. Set `replicas: 1` if the
+HPA's floor should be the real floor.
 
 ### Service (ClusterIP)
 **What:** A stable internal network endpoint that load-balances across
@@ -472,7 +481,7 @@ kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 kubectl apply -f k8s/hpa.yaml
 kubectl apply -f k8s/ingress.yaml
-kubectl rollout status deployment/devops-demo-api -n devops-demo
+kubectl rollout status deployment/devops-todo-app -n devops-demo
 
 # AWS Load Balancer Controller (IAM + Helm) — see README Step 6 for full sequence
 eksctl create iamserviceaccount ...

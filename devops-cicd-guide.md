@@ -3,12 +3,16 @@
 **Stack:** Jenkins · Docker · Terraform · Ansible · AWS EKS · Prometheus/Grafana
 **Design principle:** Every choice below defaults to the cheapest AWS option that still teaches the "real" pattern. Cost callouts are marked 💰.
 
-This guide's examples use generic placeholder names (`devops-eks`, `myapp`,
-`devops-vpc`); the screenshots below are from the actual build of this
-pattern in this repo (named `devops-eks-cicd-dev-*`, namespace
-`devops-demo`) — proof the pattern works end to end, not just on paper.
-Full capture set: `docs/updated-screenshots/`, indexed in `README.md`'s
-[Screenshots](./README.md#screenshots) section.
+Sections marked **"actual, from ..."** are the real code running in this
+repo (`app/Dockerfile`, `jenkins/Jenkinsfile`, `terraform/`, `k8s/` —
+named `devops-eks-cicd-dev-*`, namespace `devops-demo`). Sprint 1's
+early examples and Sprint 2.5/Sprint 3's Jenkins/Ansible jobs are still
+illustrative generic patterns (`myapp`, `devops-eks`) since this project
+runs Terraform manually and doesn't use Ansible — kept as reference for
+extending this pipeline that way. Screenshots throughout are from the
+actual deployment — proof the pattern works end to end, not just on
+paper. Full capture set: `docs/updated-screenshots/`, indexed in
+`README.md`'s [Screenshots](./README.md#screenshots) section.
 
 ---
 
@@ -150,63 +154,278 @@ Required plugins: **Docker Pipeline, Kubernetes, AWS Credentials, Pipeline: AWS 
 
 ## Sprint 2 — Terraform: VPC, EKS, Networking
 
-### 2.1 State backend (S3 + DynamoDB lock) — set this up first
+This project uses hand-rolled modules (`terraform/modules/{vpc,ecr,eks}`)
+rather than the public `terraform-aws-modules` registry modules — full
+control over exactly what gets created, no unused registry-module
+resources to audit for cost.
+
+### 2.1 State backend (actual, from `terraform/environments/dev/backend.tf`)
 ```hcl
 terraform {
-  backend "s3" {
-    bucket         = "capstone-tfstate-<unique-suffix>"
-    key            = "global/terraform.tfstate"
-    region         = "us-east-1"
-    use_lockfile   = true
-    encrypt        = true
-  }
-}
-```
-💰 An S3 bucket + on-demand DynamoDB table for locking costs pennies — always cheaper than losing state.
+  required_version = ">= 1.6"
 
-### 2.2 VPC — 2 AZs, single NAT
-```hcl
-module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
-
-  name = "devops-vpc"
-  cidr = "10.0.0.0/16"
-
-  azs             = ["us-east-1a", "us-east-1b"]
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
-
-  enable_nat_gateway     = true
-  single_nat_gateway     = true   # 💰 one NAT instead of one per AZ
-  one_nat_gateway_per_az = false
-
-  tags = { "kubernetes.io/cluster/devops-eks" = "shared" }
-}
-```
-
-### 2.3 EKS cluster — Spot node group
-```hcl
-module "eks" {
-  source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.0"
-
-  cluster_name    = "devops-eks"
-  cluster_version = "1.29"
-  vpc_id          = module.vpc.vpc_id
-  subnet_ids      = module.vpc.private_subnets
-
-  eks_managed_node_groups = {
-    default = {
-      instance_types = ["t3.medium"]
-      capacity_type  = "SPOT"      # 💰 60-70% cheaper than on-demand
-      min_size       = 1
-      max_size       = 3
-      desired_size   = 1
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
     }
   }
+
+  # Run scripts/bootstrap-backend.sh once
+  # to create the S3 bucket before the first `terraform init`.
+  backend "s3" {
+    bucket       = "capstone-tfstate-b15"
+    key          = "dev/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
 }
 ```
+💰 `use_lockfile = true` uses S3's native locking (Terraform ≥1.10) instead of a separate DynamoDB table — one fewer billable resource for the same guarantee. An S3 bucket costs pennies — always cheaper than losing state.
+
+### 2.2 Root composition (actual, from `terraform/environments/dev/main.tf`)
+```hcl
+locals {
+  name = "${var.project_name}-${var.environment}"
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+module "vpc" {
+  source = "../../modules/vpc"
+
+  name               = local.name
+  single_nat_gateway = true # 💰 keep this true unless you need multi-AZ HA
+  tags               = local.tags
+}
+
+module "ecr" {
+  source = "../../modules/ecr"
+
+  repository_name            = "${local.name}-app"
+  expire_untagged_after_days = 3
+  tags                       = local.tags
+}
+
+module "eks" {
+  source = "../../modules/eks"
+
+  cluster_name        = "${local.name}-eks"
+  vpc_id              = module.vpc.vpc_id
+  private_subnet_ids  = module.vpc.private_subnet_ids
+  public_subnet_ids   = module.vpc.public_subnet_ids
+  node_instance_types = ["t3.medium"]
+  capacity_type       = "SPOT" # 💰 switch to ON_DEMAND only if Spot capacity is unavailable
+  desired_size        = 1
+  min_size            = 1
+  max_size            = 2
+  tags                = local.tags
+}
+```
+
+### 2.3 VPC module — 2 AZs, single NAT (actual, from `terraform/modules/vpc/main.tf`)
+```hcl
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+locals {
+  # Use explicit var.azs if given; otherwise auto-pick the first 2 AZs ("us-east-1a", "us-east-1b")
+  azs = length(var.azs) > 0 ? var.azs : slice(data.aws_availability_zones.available.names, 0, 2)
+}
+
+resource "aws_vpc" "this" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+  tags                 = merge(var.tags, { Name = "${var.name}-vpc" })
+}
+
+resource "aws_internet_gateway" "this" {
+  vpc_id = aws_vpc.this.id
+  tags   = merge(var.tags, { Name = "${var.name}-igw" })
+}
+
+# ---- Public subnets ----
+resource "aws_subnet" "public" {
+  count                   = length(var.public_subnet_cidrs)
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = var.public_subnet_cidrs[count.index]
+  availability_zone       = local.azs[count.index]
+  map_public_ip_on_launch = true
+  tags = merge(var.tags, {
+    Name                     = "${var.name}-public-${count.index}"
+    "kubernetes.io/role/elb" = "1"
+  })
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.this.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.this.id
+  }
+  tags = merge(var.tags, { Name = "${var.name}-public-rt" })
+}
+
+resource "aws_route_table_association" "public" {
+  count          = length(aws_subnet.public)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+# ---- Private subnets ----
+resource "aws_subnet" "private" {
+  count             = length(var.private_subnet_cidrs)
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = var.private_subnet_cidrs[count.index]
+  availability_zone = local.azs[count.index]
+  tags = merge(var.tags, {
+    Name                              = "${var.name}-private-${count.index}"
+    "kubernetes.io/role/internal-elb" = "1"
+  })
+}
+
+# ---- NAT (single, cost-optimized) ----
+resource "aws_eip" "nat" {
+  count  = var.single_nat_gateway ? 1 : length(var.private_subnet_cidrs)
+  domain = "vpc"
+  tags   = merge(var.tags, { Name = "${var.name}-nat-eip-${count.index}" })
+}
+
+resource "aws_nat_gateway" "this" {
+  count         = var.single_nat_gateway ? 1 : length(var.private_subnet_cidrs)
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
+  tags          = merge(var.tags, { Name = "${var.name}-nat-${count.index}" })
+  depends_on    = [aws_internet_gateway.this]
+}
+
+resource "aws_route_table" "private" {
+  count  = length(var.private_subnet_cidrs)
+  vpc_id = aws_vpc.this.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = var.single_nat_gateway ? aws_nat_gateway.this[0].id : aws_nat_gateway.this[count.index].id
+  }
+  tags = merge(var.tags, { Name = "${var.name}-private-rt-${count.index}" })
+}
+
+resource "aws_route_table_association" "private" {
+  count          = length(aws_subnet.private)
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
+}
+
+# Every VPC gets an implicit default security group that allows all traffic
+resource "aws_default_security_group" "this" {
+  vpc_id = aws_vpc.this.id
+  tags   = merge(var.tags, { Name = "${var.name}-default-sg-locked" })
+}
+```
+
+### 2.4 EKS module — Spot node group (actual, from `terraform/modules/eks/main.tf`)
+```hcl
+# ---------------- IAM: Cluster role ----------------
+resource "aws_iam_role" "cluster" {
+  name = "${var.cluster_name}-cluster-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "eks.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "cluster_policy" {
+  role       = aws_iam_role.cluster.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+# ---------------- EKS Control Plane ----------------
+resource "aws_eks_cluster" "this" {
+  name     = var.cluster_name
+  role_arn = aws_iam_role.cluster.arn
+  version  = var.cluster_version
+
+  vpc_config {
+    subnet_ids              = concat(var.private_subnet_ids, var.public_subnet_ids)
+    endpoint_private_access = true
+    endpoint_public_access  = true
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.cluster_policy]
+  tags       = var.tags
+}
+
+# ---------------- IAM: Node role ----------------
+resource "aws_iam_role" "node" {
+  name = "${var.cluster_name}-node-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "node_worker" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_cni" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_ecr" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+# ---------------- Managed Node Group (Spot, cost-optimized) ----------------
+resource "aws_eks_node_group" "default" {
+  cluster_name    = aws_eks_cluster.this.name
+  node_group_name = "${var.cluster_name}-ng-spot"
+  node_role_arn   = aws_iam_role.node.arn
+  subnet_ids      = var.private_subnet_ids
+
+  capacity_type  = var.capacity_type
+  instance_types = var.node_instance_types
+
+  scaling_config {
+    desired_size = var.desired_size
+    min_size     = var.min_size
+    max_size     = var.max_size
+  }
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.node_worker,
+    aws_iam_role_policy_attachment.node_cni,
+    aws_iam_role_policy_attachment.node_ecr,
+  ]
+
+  tags = var.tags
+}
+```
+This mirrors the three-role IAM design in `architecture-and-concepts.md` §4 — cluster role and node role are separate, and neither has any special permission beyond what its own AWS principal needs.
 
 ![terraform init](./docs/updated-screenshots/terraform-init.png)
 *`terraform init` against the S3/DynamoDB backend.*
@@ -218,12 +437,12 @@ module "eks" {
 *`terraform apply` output with the cluster/ECR/VPC outputs.*
 
 ![VPC provisioned](./docs/updated-screenshots/devops-eks-cicd-dev-vpc.png)
-*The VPC from section 2.2, visible in the AWS console.*
+*The VPC from section 2.3, visible in the AWS console.*
 
 ![EKS cluster provisioned](./docs/updated-screenshots/devops-eks-cicd-dev-eks.png)
-*The EKS cluster from section 2.3, with the Spot node group attached.*
+*The EKS cluster from section 2.4, with the Spot node group attached.*
 
-### 2.4 Jenkins job: `terraform-provision`
+### 2.5 Jenkins job: `terraform-provision` (illustrative — this project runs Terraform manually per `README.md`)
 ```groovy
 pipeline {
   agent any
@@ -274,74 +493,248 @@ pipeline {
 
 ## Sprint 4 — CI/CD Pipeline: Build → Deploy to EKS
 
-### 4.1 Full Jenkinsfile
+### 4.1 Full Jenkinsfile (actual, from `jenkins/Jenkinsfile`)
 ```groovy
 pipeline {
   agent any
+
   environment {
-    ECR_REPO = "1234567890.dkr.ecr.us-east-1.amazonaws.com/myapp"
-    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    AWS_REGION   = 'us-east-1'
+    ECR_REPO     = credentials('ecr-repo-url') // e.g. 251478238405.dkr.ecr.us-east-1.amazonaws.com/devops-eks-cicd-dev-app
+    IMAGE_TAG    = "${env.BUILD_NUMBER}"
+    CLUSTER_NAME = 'devops-eks-cicd-dev-eks'
   }
+
   stages {
-    stage('Build')  { steps { sh 'docker build -t $ECR_REPO:$IMAGE_TAG .' } }
-    stage('Test')   { steps { sh 'docker run --rm $ECR_REPO:$IMAGE_TAG npm test' } }
-    stage('Push') {
+
+    stage('Checkout') {
       steps {
-        sh '''
-          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REPO
-          docker push $ECR_REPO:$IMAGE_TAG
-        '''
+        checkout scm
       }
     }
-    stage('Deploy') {
+
+    stage('Install & Unit Test') {
       steps {
-        sh '''
-          sed -i "s|IMAGE_PLACEHOLDER|$ECR_REPO:$IMAGE_TAG|" k8s/deployment.yaml
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
-          kubectl apply -f k8s/hpa.yaml
-        '''
+        dir('app') {
+          sh 'npm ci --cache .npm-cache'
+          sh 'npm test'
+        }
       }
+    }
+
+    stage('Build & Push Docker Image') {
+      steps {
+        dir('app') {
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-eks-credentials']]) {
+            sh '''
+              aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
+              docker buildx build --platform linux/amd64 \
+                -t "$ECR_REPO:$IMAGE_TAG" \
+                -t "$ECR_REPO:latest" \
+                --push .
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Deploy to EKS') {
+      steps {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-eks-credentials'],
+          string(credentialsId: 'MONGODB_URI', variable: 'MONGODB_URI'),
+          string(credentialsId: 'SESSION_SECRET', variable: 'SESSION_SECRET'),
+          string(credentialsId: 'COOKIE_SECURE', variable: 'COOKIE_SECURE'),
+          string(credentialsId: 'GOOGLE_CLIENT_ID', variable: 'GOOGLE_CLIENT_ID'),
+          string(credentialsId: 'GOOGLE_CLIENT_SECRET', variable: 'GOOGLE_CLIENT_SECRET')
+        ]) {
+          sh '''
+            aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+            kubectl apply -f k8s/namespace.yaml
+
+            kubectl create secret generic todo-app-secrets \
+              --namespace devops-demo \
+              --from-literal=MONGODB_URI="$MONGODB_URI" \
+              --from-literal=SESSION_SECRET="$SESSION_SECRET" \
+              --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
+              --from-literal=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
+              --dry-run=client -o yaml | kubectl apply -f -
+
+            sed -e "s|IMAGE_PLACEHOLDER|$ECR_REPO:$IMAGE_TAG|" k8s/deployment.yaml | kubectl apply -f -
+            kubectl apply -f k8s/service.yaml
+            kubectl apply -f k8s/hpa.yaml
+            kubectl apply -f k8s/ingress.yaml
+          '''
+        }
+      }
+    }
+
+    stage('Verify Rollout') {
+      steps {
+        sh 'kubectl rollout status deployment/devops-demo-api -n devops-demo --timeout=120s'
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Deployed build ${IMAGE_TAG} to ${CLUSTER_NAME}"
+    }
+    failure {
+      echo "Pipeline failed — check stage logs above. Wire a Slack/email notifier here for real alerts."
+    }
+    always {
+      sh 'docker image prune -f'
     }
   }
 }
 ```
+💰 `docker image prune -f` in `post { always {...} }` keeps the Jenkins host's local Docker layer cache from growing unbounded across builds — unrelated to cloud cost, but the #1 cause of a Jenkins EC2/pod running out of disk over time.
 
-### 4.2 Kubernetes manifests (with autoscaling, not a fixed large replica count)
+### 4.2 Kubernetes manifests (actual, from `k8s/`)
+```yaml
+# namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-demo
+```
 ```yaml
 # deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: myapp }
+metadata:
+  name: devops-todo-app
+  namespace: devops-demo
+  labels:
+    app: devops-todo-app
 spec:
-  replicas: 1   # 💰 start at 1; let HPA scale, don't pre-provision capacity
-  selector: { matchLabels: { app: myapp } }
+  replicas: 3 # 💰 start at 1; HPA scales up only under real load
+  selector:
+    matchLabels:
+      app: devops-todo-app
   template:
-    metadata: { labels: { app: myapp } }
+    metadata:
+      labels:
+        app: devops-todo-app
     spec:
       containers:
-        - name: myapp
-          image: IMAGE_PLACEHOLDER
+        - name: devops-todo-app
+          image: IMAGE_PLACEHOLDER # replaced by Jenkins at deploy time
+          ports:
+            - containerPort: 3009
+          env:
+            - name: PORT
+              value: "3009"
+            - name: NODE_ENV
+              value: "production"
+            - name: COOKIE_SECURE
+              value: "false" # flip to "true" once the ingress terminates TLS
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secrets
+                  key: MONGODB_URI
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secrets
+                  key: SESSION_SECRET
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secrets
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: todo-app-secrets
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
           resources:
-            requests: { cpu: "100m", memory: "128Mi" }
-            limits:   { cpu: "250m", memory: "256Mi" }
-          readinessProbe: { httpGet: { path: /health, port: 3009 }, initialDelaySeconds: 5 }
-          livenessProbe:  { httpGet: { path: /health, port: 3009 }, initialDelaySeconds: 10 }
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3009
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3009
+            initialDelaySeconds: 10
+            periodSeconds: 15
+```
+> **Note:** the running `replicas: 3` is above the `minReplicas: 1` in the HPA below — HPA only ever scales *up* from whatever `replicas` is currently set to, never below it, so this deployment never actually idles down to 1 pod. Set `replicas: 1` if you want the HPA's floor to be the real floor.
+
+```yaml
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: devops-todo-app
+  namespace: devops-demo
+spec:
+  type: ClusterIP # exposed externally via Ingress below, not a per-service LoadBalancer
+  selector:
+    app: devops-todo-app
+  ports:
+    - port: 80
+      targetPort: 3009
 ```
 ```yaml
 # hpa.yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
-metadata: { name: myapp-hpa }
+metadata:
+  name: devops-todo-app-hpa
+  namespace: devops-demo
 spec:
-  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: myapp }
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: devops-todo-app
   minReplicas: 1
-  maxReplicas: 4
+  maxReplicas: 5
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
 ```
-💰 Setting real `requests`/`limits` (not defaults) prevents over-scheduling nodes, which is what silently drives up your EC2 bill.
+```yaml
+# ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devops-todo-app-ingress
+  namespace: devops-demo
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: devops-todo-app
+                port:
+                  number: 80
+```
+💰 Setting real `requests`/`limits` (not defaults) prevents over-scheduling nodes, which is what silently drives up your EC2 bill. `alb.ingress.kubernetes.io/target-type: ip` routes the ALB directly to pod IPs (via the VPC CNI) instead of through each node's `NodePort` — one fewer network hop, and it's what the AWS Load Balancer Controller needs to load-balance evenly across pods rather than nodes.
 
 ![Local Docker image](./docs/updated-screenshots/docker-images.png)
 *`docker images` — the built image before push.*
@@ -356,7 +749,7 @@ spec:
 *Ingress `ADDRESS` populated once the AWS Load Balancer Controller reconciles it.*
 
 ![HPA scaling under load](./docs/updated-screenshots/21-hpa-scaling.png)
-*The `myapp-hpa` autoscaler from section 4.2 scaling replicas 1→N under load (`load-test.png` in the full capture set).*
+*The `devops-todo-app-hpa` autoscaler from section 4.2 scaling replicas out under load (`load-test.png` in the full capture set).*
 
 ---
 
