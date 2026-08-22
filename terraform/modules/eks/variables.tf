@@ -21,7 +21,7 @@ variable "public_subnet_ids" {
 
 variable "node_instance_types" {
   type    = list(string)
-  default = ["t3.medium"]
+  default = ["t2.medium"]
 }
 
 variable "capacity_type" {
