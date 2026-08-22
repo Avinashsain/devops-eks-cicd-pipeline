@@ -12,6 +12,17 @@ issue hit along the way and its fix — not just the happy path.
 
 ---
 
+## Documentation
+
+| Doc | What it's for |
+|---|---|
+| [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) | Project summary, team roles — short notes for presentation/viva |
+| [architecture-and-concepts.md](./architecture-and-concepts.md) | What each technology/resource is and why this project needs it, with the commands that touch it |
+| [devops-cicd-guide.md](./devops-cicd-guide.md) | End-to-end, cost-optimized build guide for the full CI/CD pipeline |
+| [DevOps-EKS-CICD-Complete-Setup-Guide.md](./DevOps-EKS-CICD-Complete-Setup-Guide.md) | Complete step-by-step setup guide for deploying the Todo List API on EKS |
+
+---
+
 ## Table of Contents
 1. [Architecture](#architecture)
 2. [Repo layout](#repo-layout)
