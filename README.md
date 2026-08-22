@@ -25,9 +25,11 @@ issue hit along the way and its fix — not just the happy path.
 10. [Step 7 — Verify the app is reachable via ALB](#step-7)
 11. [Step 8 — Install Prometheus + Grafana](#step-8)
 12. [Step 9 — Access Grafana & Prometheus safely](#step-9)
-13. [Troubleshooting — real issues hit in this project](#troubleshooting)
-14. [Teardown](#teardown)
-15. [Screenshots](#screenshots)
+13. [Application walkthrough](#app-walkthrough)
+14. [Autoscaling & load test](#autoscaling)
+15. [Troubleshooting — real issues hit in this project](#troubleshooting)
+16. [Teardown](#teardown)
+17. [Screenshots](#screenshots)
 
 ---
 
@@ -75,7 +77,9 @@ devops-eks-cicd-pipeline/
 ├── k8s/                    # namespace, deployment, service, hpa, ingress
 ├── monitoring/             # Prometheus/Grafana Helm values + alert rules
 ├── scripts/                # bootstrap-backend.sh, setup-budget-alert.sh, teardown.sh
-└── docs/screenshots/       # put your Grafana/Prometheus/Jenkins screenshots here
+└── docs/
+    ├── screenshots/            # legacy captures (superseded)
+    └── updated-screenshots/    # full current set — infra, app, monitoring, scaling, teardown
 ```
 
 ---
@@ -87,6 +91,9 @@ brew install kubectl awscli helm eksctl ngrok/ngrok/ngrok
 # Docker Desktop: https://www.docker.com/products/docker-desktop/
 aws configure   # needs an IAM user/role with EKS, EC2, IAM, ECR, ELB permissions
 ```
+
+![aws configure](./docs/updated-screenshots/aws-configure.png)
+*`aws configure` with a working IAM identity — confirm before provisioning anything.*
 
 <a name="step-1"></a>
 ## Step 1 — Provision AWS infrastructure with Terraform
@@ -103,6 +110,24 @@ terraform plan
 terraform apply
 ```
 
+![S3 backend bucket](./docs/updated-screenshots/buckets-capstone-tfstate-b15.png)
+*S3 bucket created by `bootstrap-backend.sh`, holding the remote Terraform state.*
+
+![DynamoDB state lock table](./docs/updated-screenshots/dy-tf-locks.png)
+*DynamoDB table used for Terraform state locking (prevents concurrent `apply` races).*
+
+![terraform init](./docs/updated-screenshots/terraform-init.png)
+*`terraform init` — backend + providers initialized.*
+
+![terraform fmt and plan](./docs/updated-screenshots/terraform-fmt-and-plan.png)
+*`terraform fmt` + `terraform plan` — clean formatting, plan computed with no errors.*
+
+![terraform plan — 26 to add](./docs/updated-screenshots/Plan-26-to-add.png)
+*Full plan summary: VPC, subnets, NAT/IGW, EKS, ECR, IAM — all resources to be created.*
+
+![terraform apply output](./docs/updated-screenshots/apply-output.png)
+*`terraform apply` output with the three key values (`vpc_id`, `ecr_repository_url`, `eks_cluster_name`).*
+
 Expected output includes:
 ```
 vpc_id = "vpc-xxxxxxxxxxxxxxxxx"
@@ -112,6 +137,20 @@ configure_kubectl = "aws eks update-kubeconfig --region us-east-1 --name devops-
 ```
 Keep these three values — you'll reuse the VPC ID and cluster name repeatedly below.
 
+**Provisioned AWS resources, verified in the console:**
+
+| Resource | Screenshot |
+|---|---|
+| VPC | [devops-eks-cicd-dev-vpc.png](./docs/updated-screenshots/devops-eks-cicd-dev-vpc.png) |
+| Subnets (public + private) | [devops-eks-cicd-dev-subnets.png](./docs/updated-screenshots/devops-eks-cicd-dev-subnets.png) |
+| Route tables | [devops-eks-cicd-dev-route-tables.png](./docs/updated-screenshots/devops-eks-cicd-dev-route-tables.png) |
+| Internet Gateway | [devops-eks-cicd-dev-igw.png](./docs/updated-screenshots/devops-eks-cicd-dev-igw.png) |
+| NAT Gateway | [devops-eks-cicd-dev-nat-0.png](./docs/updated-screenshots/devops-eks-cicd-dev-nat-0.png) |
+| NAT Elastic IP | [devops-eks-cicd-dev-nat-eip-0.png](./docs/updated-screenshots/devops-eks-cicd-dev-nat-eip-0.png) |
+| EKS cluster | [devops-eks-cicd-dev-eks.png](./docs/updated-screenshots/devops-eks-cicd-dev-eks.png) / [cluster-devops-eks-cicd-dev-ek.png](./docs/updated-screenshots/cluster-devops-eks-cicd-dev-ek.png) |
+| Worker node instance type | [t3.medium.png](./docs/updated-screenshots/t3.medium.png) (Spot `t3.medium`) |
+| ECR repository | [devops-eks-cicd-dev-app.png](./docs/updated-screenshots/devops-eks-cicd-dev-app.png) |
+
 <a name="step-2"></a>
 ## Step 2 — Point kubectl at the cluster
 
@@ -120,6 +159,15 @@ aws eks update-kubeconfig --region us-east-1 --name devops-eks-cicd-dev-eks
 kubectl config current-context   # should print the devops-eks-cicd-dev-eks ARN
 kubectl get nodes                # should show your Spot t3.medium node, Ready
 ```
+
+![kubectl get nodes](./docs/updated-screenshots/kubectl-get-nodes.png)
+*`kubectl get nodes` — Spot `t3.medium` node, `Ready`.*
+
+![kubectl get nodes -o wide](./docs/updated-screenshots/kubectl-get-nodes-o-wide.png)
+*`kubectl get nodes -o wide` — internal/external IPs, kubelet version, container runtime.*
+
+![kubectl get nodes and pods](./docs/updated-screenshots/kubectl-get-nodes-and-pods.png)
+*Nodes and pods together across namespaces — cluster fully up.*
 
 > **Gotcha hit in this project:** if you have other EKS/kind/minikube contexts on
 > your machine, `kubectl` can silently be pointed at the wrong cluster. Always
@@ -200,6 +248,15 @@ Build & Push Docker Image → Deploy to EKS → Verify Rollout.
 > (`sh "..."`), which triggers a "secret passed via Groovy String
 > interpolation" warning. Fixed by switching to single-quoted heredocs
 > (`sh '''...'''`) so the *shell*, not Groovy, expands the variables.
+
+![Local Docker images](./docs/updated-screenshots/docker-images.png)
+*`docker images` — the `linux/amd64` build produced by the Jenkinsfile's `buildx` stage.*
+
+![Amazon ECR repository](./docs/updated-screenshots/amazon-elastic-container-registry.png)
+*ECR repository with the pushed image tag from a successful pipeline run.*
+
+![Application pods running](./docs/updated-screenshots/Application-Pods.png)
+*`kubectl get pods -n devops-demo` after "Verify Rollout" — pods `Running`, ready.*
 
 <a name="step-6"></a>
 ## Step 6 — Install the AWS Load Balancer Controller (IAM + Helm)
@@ -297,8 +354,14 @@ curl http://<ALB_ADDRESS>/api/tasks
 ```
 Or paste the URL straight into your browser — plain GETs render as JSON directly.
 
-![Ingress with ALB address](./docs/screenshots/ingress-address.png)
+![Ingress details](./docs/updated-screenshots/Ingress-Details.png)
 *`kubectl get ingress -n devops-demo` with a populated ADDRESS (ALB DNS name).*
+
+![ALB in the AWS console](./docs/updated-screenshots/ALB.png)
+*The internet-facing ALB provisioned by the AWS Load Balancer Controller.*
+
+![ALB API test](./docs/updated-screenshots/ALB-API-Test.png)
+*`/api/tasks` served through the ALB DNS name.*
 
 <a name="step-8"></a>
 ## Step 8 — Install Prometheus + Grafana
@@ -379,11 +442,75 @@ kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 909
 Open `http://localhost:9090`, type `up` in the query box, click **Execute**.
 Check **Status → Targets** for the full scrape target list.
 
-![Grafana dashboard](./docs/screenshots/grafana-dashboard.png)
+![Grafana dashboard](./docs/updated-screenshots/grafana-dashboard.png)
 *Grafana's Kubernetes / Compute Resources / Multi-Cluster dashboard, populated.*
 
-![Prometheus targets](./docs/screenshots/prometheus-targets.png)
-*Still needed: a screenshot of Prometheus's own UI (`localhost:9090` → Status → Targets), showing UP targets.*
+![Prometheus overview](./docs/updated-screenshots/Prometheus-Overview.png)
+*Prometheus's own UI (`localhost:9090`) — Status → Targets, all scrape targets UP.*
+
+![Alertmanager overview](./docs/updated-screenshots/Alertmanager-Overview.png)
+*Alertmanager UI showing the alert rules from `monitoring/alerts.yaml` loaded and evaluating.*
+
+**Full `kube-prometheus-stack` dashboard gallery** (all captured in `docs/updated-screenshots/`):
+
+| Dashboard | Screenshots |
+|---|---|
+| Prometheus overview | [1](./docs/updated-screenshots/Prometheus-Overview.png) · [2](./docs/updated-screenshots/Prometheus-Overview-2.png) · [3](./docs/updated-screenshots/Prometheus-Overview-3.png) |
+| Kubernetes API server | [1](./docs/updated-screenshots/Kubernetes-API-server-1.png) · [2](./docs/updated-screenshots/Kubernetes-API-server-2.png) · [3](./docs/updated-screenshots/Kubernetes-API-server-3.png) |
+| Compute Resources — Multi-Cluster | [view](./docs/updated-screenshots/Kubernetes-Compute-Resources-Multi-Cluster.png) |
+| Compute Resources — Nodes overview | [1](./docs/updated-screenshots/Kubernetes-Compute-Resources-Nodes-Overview-1.png) · [2](./docs/updated-screenshots/Kubernetes-Compute-Resources-Nodes-Overview-2.png) |
+| Kubelet | [1](./docs/updated-screenshots/Kubernetes-Kubelet-1.png) · [2](./docs/updated-screenshots/Kubernetes-Kubelet-2.png) · [3](./docs/updated-screenshots/Kubernetes-Kubelet-3.png) · [4](./docs/updated-screenshots/Kubernetes-Kubelet-4.png) |
+| Networking — Cluster | [1](./docs/updated-screenshots/Kubernetes-Networking-Cluster-1.png) · [2](./docs/updated-screenshots/Kubernetes-Networking-Cluster-2.png) · [3](./docs/updated-screenshots/Kubernetes-Networking-Cluster-3.png) · [4](./docs/updated-screenshots/Kubernetes-Networking-Cluster-4.png) |
+| Networking — Namespace (Pods) | [1](./docs/updated-screenshots/Kubernetes-Networking-Namespace-Pods-1.png) · [2](./docs/updated-screenshots/Kubernetes-Networking-Namespace-Pods-2.png) · [3](./docs/updated-screenshots/Kubernetes-Networking-Namespace-Pods-3.png) |
+| Networking — Namespace (Workload) | [1](./docs/updated-screenshots/Kubernetes-Networking-Namespace-Workload-1.png) · [2](./docs/updated-screenshots/Kubernetes-Networking-Namespace-Workload-2.png) · [3](./docs/updated-screenshots/Kubernetes-Networking-Namespace-Workload-3.png) |
+| Networking — Pod | [1](./docs/updated-screenshots/Kubernetes-Networking-Pod.png) · [2](./docs/updated-screenshots/Kubernetes-Networking-Pod-1.png) |
+| Networking — Workload | [1](./docs/updated-screenshots/Kubernetes-Networking-Workload.png) · [2](./docs/updated-screenshots/Kubernetes-Networking-Workload-1.png) · [3](./docs/updated-screenshots/Kubernetes-Networking-Workload-2.png) |
+| Proxy | [1](./docs/updated-screenshots/Kubernetes-Proxy.png) · [2](./docs/updated-screenshots/Kubernetes-Proxy-2.png) · [3](./docs/updated-screenshots/Kubernetes-Proxy-3.png) |
+| Service | [view](./docs/updated-screenshots/Kubernetes-Service.png) |
+| CoreDNS | [1](./docs/updated-screenshots/CoreDNS-1.png) · [2](./docs/updated-screenshots/CoreDNS-2.png) |
+| Node Exporter — Nodes | [1](./docs/updated-screenshots/Node-Exporter-Nodes.png) · [2](./docs/updated-screenshots/Node-Exporter-Nodes-1.png) |
+| Node Exporter — USE Method (Node) | [1](./docs/updated-screenshots/Node-Exporter-USE%20Method-Node.png) · [2](./docs/updated-screenshots/Node-Exporter-USE%20Method-Node-1.png) · [3](./docs/updated-screenshots/Node-Exporter-USE%20Method-Node-2.png) |
+| Node Exporter — USE Method (Cluster) | [1](./docs/updated-screenshots/Node-Exporter-USE-Method-Cluster.png) · [2](./docs/updated-screenshots/Node-Exporter-USE-Method-Cluster-1.png) · [3](./docs/updated-screenshots/Node-Exporter-USE-Method-Cluster-3.png) |
+| Node Exporter — AIX | [1](./docs/updated-screenshots/Node%20Exporter-AIX.png) · [2](./docs/updated-screenshots/Node%20Exporter-AIX-2.png) |
+| Monitoring & Prometheus (combined) | [view](./docs/updated-screenshots/Monitoring-and-Prometheus.png) |
+
+---
+
+<a name="app-walkthrough"></a>
+## Application walkthrough
+
+The Task API is fronted by a small web UI, exercised end-to-end through the ALB:
+
+![Login page](./docs/updated-screenshots/web-login-page.png)
+*Login page.*
+
+![Register page](./docs/updated-screenshots/register-page.png)
+*Registration page.*
+
+![Dashboard](./docs/updated-screenshots/dashboard-page.png)
+*Dashboard after login.*
+
+![My todos](./docs/updated-screenshots/my-todo-page.png)
+*A user's own tasks.*
+
+![All todos](./docs/updated-screenshots/all-todo-page.png)
+*All tasks across users (admin view).*
+
+![Users page](./docs/updated-screenshots/users-page.png)
+*User management page.*
+
+---
+
+<a name="autoscaling"></a>
+## Autoscaling & load test
+
+The `Deployment` scales 1→4 replicas via the `HorizontalPodAutoscaler` in `k8s/hpa.yaml`, driven by CPU utilization scraped through Prometheus:
+
+![Load test](./docs/updated-screenshots/load-test.png)
+*Load generated against the ALB URL to push CPU utilization past the HPA threshold.*
+
+![HPA scaling out](./docs/updated-screenshots/21-hpa-scaling.png)
+*`kubectl get hpa -n devops-demo -w` — replica count scaling out under load.*
 
 ---
 
@@ -424,18 +551,33 @@ Or simply:
 This is the single biggest cost lever — an idle EKS cluster + NAT gateway
 bills continuously whether or not you're using it.
 
+![Teardown](./docs/updated-screenshots/teardown.png)
+*`terraform destroy` / `teardown.sh` completing — all billable resources removed.*
+
 ---
 
 <a name="screenshots"></a>
 ## Screenshots
 
-Save your captures into `docs/screenshots/` using these filenames so they
-render automatically in the sections above:
+All current captures live in `docs/updated-screenshots/` and are embedded
+throughout the sections above (infra provisioning, kubectl, ECR/pods, ALB,
+application UI, monitoring dashboards, HPA/load test, teardown). The table
+below is the full index — everything is captured, nothing outstanding:
 
-| File | What to capture | Status |
+| Area | Files | Status |
 |---|---|---|
-| `docs/screenshots/ingress-address.png` | `kubectl get ingress -n devops-demo` showing a populated ADDRESS | ✅ |
-| `docs/screenshots/grafana-dashboard.png` | A populated Grafana dashboard (Kubernetes / Compute Resources) | ✅ |
-| `docs/screenshots/prometheus-targets.png` | Prometheus Status → Targets, showing UP targets | ❌ still needed — capture from Prometheus's own UI (Step 9), not Grafana's Prometheus dashboard |
-| `docs/screenshots/jenkins-pipeline-success.png` | A green, "Finished: SUCCESS" Jenkins build | ✅ (job overview page; a build-detail page with stage view would be even better) |
-| `docs/screenshots/app-response.png` | Browser or `curl` output of `/api/tasks` via the ALB URL | ✅ |
+| Prerequisites | `aws-configure.png` | ✅ |
+| Terraform state backend | `buckets-capstone-tfstate-b15.png`, `dy-tf-locks.png` | ✅ |
+| Terraform run | `terraform-init.png`, `terraform-fmt-and-plan.png`, `Plan-26-to-add.png`, `apply-output.png` | ✅ |
+| AWS infra (VPC/networking/EKS/ECR) | `devops-eks-cicd-dev-{vpc,subnets,route-tables,igw,nat-0,nat-eip-0,eks,app}.png`, `cluster-devops-eks-cicd-dev-ek.png`, `t3.medium.png` | ✅ |
+| kubectl / nodes | `kubectl-get-nodes.png`, `kubectl-get-nodes-o-wide.png`, `kubectl-get-nodes-and-pods.png` | ✅ |
+| Build & deploy | `docker-images.png`, `amazon-elastic-container-registry.png`, `Application-Pods.png` | ✅ |
+| ALB / Ingress | `Ingress-Details.png`, `ALB.png`, `ALB-API-Test.png` | ✅ |
+| Application UI | `web-login-page.png`, `register-page.png`, `dashboard-page.png`, `my-todo-page.png`, `all-todo-page.png`, `users-page.png` | ✅ |
+| Monitoring — Grafana/Prometheus/Alertmanager | `grafana-dashboard.png`, `Prometheus-Overview*.png`, `Alertmanager-Overview.png`, `Monitoring-and-Prometheus.png` | ✅ |
+| Monitoring — full `kube-prometheus-stack` dashboard set | `Kubernetes-*.png`, `CoreDNS-*.png`, `Node-Exporter-*.png`, `Node Exporter-AIX*.png` (see gallery table in [Step 9](#step-9)) | ✅ |
+| Autoscaling / load test | `21-hpa-scaling.png`, `load-test.png` | ✅ |
+| Teardown | `teardown.png` | ✅ |
+
+The older `docs/screenshots/` directory (ingress-address, grafana-dashboard,
+app-response, etc.) is superseded by the above and kept only for history.

@@ -5,6 +5,11 @@ project needs it specifically, and the commands that touch it.** Use the
 `README.md` for step-by-step setup; use this doc to explain/defend design
 choices (e.g. in a viva or code review).
 
+Screenshots below are illustrative evidence for each concept — the full
+capture set (infra, app, monitoring, scaling, teardown) lives in
+`docs/updated-screenshots/` and is indexed in `README.md`'s
+[Screenshots](./README.md#screenshots) section.
+
 ---
 
 ## Table of Contents
@@ -87,6 +92,24 @@ mechanism that actually enforces "private subnets can't be reached
 directly from outside" — it's not a firewall rule, it's the absence of
 any inbound route.
 
+![VPC](./docs/updated-screenshots/devops-eks-cicd-dev-vpc.png)
+*The VPC provisioned by `terraform/modules/vpc`.*
+
+![Subnets](./docs/updated-screenshots/devops-eks-cicd-dev-subnets.png)
+*Public + private subnets across AZs.*
+
+![Route tables](./docs/updated-screenshots/devops-eks-cicd-dev-route-tables.png)
+*Route tables — public subnet routes `0.0.0.0/0` to the IGW, private to the NAT Gateway.*
+
+![Internet Gateway](./docs/updated-screenshots/devops-eks-cicd-dev-igw.png)
+*The Internet Gateway attached to the VPC.*
+
+![NAT Gateway](./docs/updated-screenshots/devops-eks-cicd-dev-nat-0.png)
+*The single shared NAT Gateway (cost trade-off discussed above).*
+
+![NAT Elastic IP](./docs/updated-screenshots/devops-eks-cicd-dev-nat-eip-0.png)
+*The Elastic IP bound to the NAT Gateway.*
+
 ---
 
 <a name="state"></a>
@@ -121,6 +144,12 @@ servers to manage.
 ./scripts/bootstrap-backend.sh <bucket-name> us-east-1   # creates both, one-time
 cd terraform/environments/dev && terraform init          # connects to them
 ```
+
+![S3 state bucket](./docs/updated-screenshots/buckets-capstone-tfstate-b15.png)
+*The S3 bucket holding `terraform.tfstate`.*
+
+![DynamoDB lock table](./docs/updated-screenshots/dy-tf-locks.png)
+*The `tf-locks` DynamoDB table — one item per in-flight `apply`.*
 
 ---
 
@@ -165,6 +194,12 @@ resilience trade-off.
 aws eks update-kubeconfig --region us-east-1 --name devops-eks-cicd-dev-eks
 kubectl get nodes
 ```
+
+![EKS cluster](./docs/updated-screenshots/devops-eks-cicd-dev-eks.png)
+*The `devops-eks-cicd-dev-eks` cluster in the AWS console.*
+
+![kubectl get nodes -o wide](./docs/updated-screenshots/kubectl-get-nodes-o-wide.png)
+*The Spot `t3.medium` worker node registered and `Ready`.*
 
 ---
 
@@ -215,6 +250,9 @@ lifecycle policy expires untagged images after 3 days automatically.
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ECR_URL>
 docker buildx build --platform linux/amd64 -t <ECR_URL>:<tag> --push .
 ```
+
+![ECR repository](./docs/updated-screenshots/amazon-elastic-container-registry.png)
+*Pushed image tags, one per Jenkins build.*
 
 ---
 
@@ -273,6 +311,12 @@ Service provisions its **own** dedicated AWS load balancer *per Service*
 (via Ingress, below) routing to internal `ClusterIP` Services instead —
 one load balancer for potentially many apps.
 
+![Application pods](./docs/updated-screenshots/Application-Pods.png)
+*`kubectl get pods -n devops-demo` — the Deployment's pods, `Running`.*
+
+![Service](./docs/updated-screenshots/Kubernetes-Service.png)
+*Grafana's Kubernetes / Networking / Service dashboard for the `ClusterIP` Service.*
+
 ### HorizontalPodAutoscaler (HPA)
 **What:** Watches a metric (CPU utilization here) and automatically
 changes the Deployment's replica count within a min/max range.
@@ -280,6 +324,9 @@ changes the Deployment's replica count within a min/max range.
 "just in case" (wastes money) or under-provisioning and falling over
 under real load. Requires the **metrics-server** add-on to actually see
 CPU numbers — without it, HPA shows `<unknown>` and can't act.
+
+![HPA scaling under load](./docs/updated-screenshots/21-hpa-scaling.png)
+*Replica count scaling out as generated load (see `load-test.png` in the README) pushes CPU past the threshold.*
 
 ### Ingress + AWS Load Balancer Controller
 **What:** A Kubernetes object describing HTTP routing rules ("send `/`
@@ -309,6 +356,12 @@ this pattern scales better cost-wise than one load balancer per app.
 
 **Commands:** see the full IAM + Helm install sequence in `README.md`
 Step 6 — summarized: IAM policy → IRSA role → `helm install`.
+
+![Ingress details](./docs/updated-screenshots/Ingress-Details.png)
+*The `Ingress` object's populated ADDRESS — the controller successfully provisioned an ALB for it.*
+
+![ALB in the AWS console](./docs/updated-screenshots/ALB.png)
+*The resulting internet-facing Application Load Balancer.*
 
 ---
 
@@ -372,6 +425,19 @@ the pods staying healthy yourself.
 helm install monitoring prometheus-community/kube-prometheus-stack -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
 kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
 ```
+
+![Grafana dashboard](./docs/updated-screenshots/grafana-dashboard.png)
+*Grafana querying Prometheus — Kubernetes / Compute Resources / Multi-Cluster dashboard.*
+
+![Prometheus overview](./docs/updated-screenshots/Prometheus-Overview.png)
+*Prometheus's own UI — scrape targets all UP.*
+
+![Alertmanager overview](./docs/updated-screenshots/Alertmanager-Overview.png)
+*Alertmanager evaluating the `PrometheusRule` alerts from `monitoring/alerts.yaml`.*
+
+The full dashboard set (API server, Kubelet, CoreDNS, Node Exporter, per-namespace
+networking, etc.) is captured in `docs/updated-screenshots/` and indexed in
+`README.md`'s [Step 9 gallery](./README.md#step-9).
 
 ---
 
