@@ -590,8 +590,12 @@ bills continuously whether or not you're using it.
 <a name="screenshots"></a>
 ## Screenshots
 
-**[▶ Watch the walkthrough video](./docs/project-walkthrough.mp4)** — all 83 screenshots
-below, stitched into one slideshow in the same order as this README (~2m46s).
+<video src="./docs/project-walkthrough.mp4" controls width="100%"></video>
+
+*All 83 screenshots below, stitched into one slideshow in the same order as
+this README (~2m46s). GitHub doesn't autoplay repo-relative video in
+READMEs — if the player above shows blank there, use the direct link:
+[docs/project-walkthrough.mp4](./docs/project-walkthrough.mp4).*
 
 All current captures live in `docs/updated-screenshots/` and are embedded
 throughout the sections above (infra provisioning, kubectl, ECR/pods, ALB,
