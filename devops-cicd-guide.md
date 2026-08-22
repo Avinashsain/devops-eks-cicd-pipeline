@@ -3,6 +3,13 @@
 **Stack:** Jenkins · Docker · Terraform · Ansible · AWS EKS · Prometheus/Grafana
 **Design principle:** Every choice below defaults to the cheapest AWS option that still teaches the "real" pattern. Cost callouts are marked 💰.
 
+This guide's examples use generic placeholder names (`devops-eks`, `myapp`,
+`devops-vpc`); the screenshots below are from the actual build of this
+pattern in this repo (named `devops-eks-cicd-dev-*`, namespace
+`devops-demo`) — proof the pattern works end to end, not just on paper.
+Full capture set: `docs/updated-screenshots/`, indexed in `README.md`'s
+[Screenshots](./README.md#screenshots) section.
+
 ---
 
 ## 0. Cost Strategy (read this first)
@@ -142,6 +149,21 @@ module "eks" {
 }
 ```
 
+![terraform init](./docs/updated-screenshots/terraform-init.png)
+*`terraform init` against the S3/DynamoDB backend.*
+
+![terraform plan](./docs/updated-screenshots/terraform-fmt-and-plan.png)
+*`terraform fmt` + `terraform plan` — clean, no errors.*
+
+![terraform apply output](./docs/updated-screenshots/apply-output.png)
+*`terraform apply` output with the cluster/ECR/VPC outputs.*
+
+![VPC provisioned](./docs/updated-screenshots/devops-eks-cicd-dev-vpc.png)
+*The VPC from section 2.2, visible in the AWS console.*
+
+![EKS cluster provisioned](./docs/updated-screenshots/devops-eks-cicd-dev-eks.png)
+*The EKS cluster from section 2.3, with the Spot node group attached.*
+
 ### 2.4 Jenkins job: `terraform-provision`
 ```groovy
 pipeline {
@@ -262,6 +284,21 @@ spec:
 ```
 💰 Setting real `requests`/`limits` (not defaults) prevents over-scheduling nodes, which is what silently drives up your EC2 bill.
 
+![Local Docker image](./docs/updated-screenshots/docker-images.png)
+*`docker images` — the built image before push.*
+
+![ECR repository](./docs/updated-screenshots/amazon-elastic-container-registry.png)
+*Pushed image tags in ECR, one per build (`4.1`'s `Push` stage).*
+
+![Pods running](./docs/updated-screenshots/Application-Pods.png)
+*`kubectl get pods` after the `Deploy` stage — Deployment's pods `Running`.*
+
+![Ingress + ALB](./docs/updated-screenshots/Ingress-Details.png)
+*Ingress `ADDRESS` populated once the AWS Load Balancer Controller reconciles it.*
+
+![HPA scaling under load](./docs/updated-screenshots/21-hpa-scaling.png)
+*The `myapp-hpa` autoscaler from section 4.2 scaling replicas 1→N under load (`load-test.png` in the full capture set).*
+
 ---
 
 ## Sprint 5 — Monitoring: Prometheus + Grafana (self-hosted, not AWS-managed)
@@ -288,6 +325,15 @@ groups:
 ```
 Wire Jenkins notifications via a webhook step in the pipeline (Slack/email plugin) triggered on `post { failure { ... } }`.
 
+![Grafana dashboard](./docs/updated-screenshots/grafana-dashboard.png)
+*The `kube-prometheus-stack` Grafana install, dashboards populated.*
+
+![Prometheus overview](./docs/updated-screenshots/Prometheus-Overview.png)
+*Prometheus's own UI — scrape targets all UP.*
+
+![Alertmanager overview](./docs/updated-screenshots/Alertmanager-Overview.png)
+*Alertmanager evaluating rules like `DeploymentReplicasMismatch` above.*
+
 ---
 
 ## Sprint 6 — Testing, Documentation, Final Automation
@@ -311,6 +357,9 @@ aws ec2 describe-instances --filters "Name=instance-state-name,Values=running"
 aws elbv2 describe-load-balancers
 ```
 Leaving an EKS cluster + NAT + Spot node running idle overnight is the single most common way this project blows past a "cost-optimized" budget — that checklist is worth automating as a Jenkins job too.
+
+![Teardown](./docs/updated-screenshots/teardown.png)
+*`terraform destroy` completing — no billable resources left running.*
 
 ---
 
