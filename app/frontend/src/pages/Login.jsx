@@ -31,40 +31,48 @@ export function Login() {
 
   return (
     <div className="page-center">
-      <form className="card auth-form" onSubmit={handleSubmit}>
-        <h1>Log in</h1>
-        {error && <p className="error">{error}</p>}
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Logging in…' : 'Log in'}
-        </button>
-        {googleEnabled && (
-          <>
-            <div className="divider">or</div>
-            <a href="/api/auth/google" className="google-btn">
-              <i className="bi bi-google" /> Continue with Google
-            </a>
-          </>
-        )}
-        <p className="muted">
-          No account? <Link to="/register">Register</Link>
-        </p>
-      </form>
+      <div className="auth-wrapper">
+        <div className="auth-logo">
+          <span className="auth-logo-icon">
+            <i className="bi bi-check2-square" />
+          </span>
+          <span className="auth-logo-text">Todo List</span>
+        </div>
+        <form className="card auth-form" onSubmit={handleSubmit}>
+          <h1>Log in</h1>
+          {error && <p className="error">{error}</p>}
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button type="submit" disabled={submitting}>
+            {submitting ? 'Logging in…' : 'Log in'}
+          </button>
+          {googleEnabled && (
+            <>
+              <div className="divider">or</div>
+              <a href="/api/auth/google" className="google-btn">
+                <i className="bi bi-google" /> Continue with Google
+              </a>
+            </>
+          )}
+          <p className="muted">
+            No account? <Link to="/register">Register</Link>
+          </p>
+        </form>
+      </div>
     </div>
   );
 }
