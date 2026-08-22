@@ -142,19 +142,19 @@ Expected:
 Describe pods:
 
 ``` bash
-kubectl describe pod -n devops-demo -l app=devops-demo-api
+kubectl describe pod -n devops-demo -l app=devops-todo-app
 ```
 
 Logs:
 
 ``` bash
-kubectl logs -n devops-demo -l app=devops-demo-api
+kubectl logs -n devops-demo -l app=devops-todo-app
 ```
 
 Check ConfigMaps/Secrets:
 
 ``` bash
-kubectl get deployment devops-demo-api \
+kubectl get deployment devops-todo-app \
 -n devops-demo \
 -o yaml | grep -A5 -i "configMapKeyRef\|secretKeyRef\|envFrom"
 ```
@@ -670,7 +670,7 @@ Expected final state:
 Application logs:
 
 ``` bash
-kubectl logs -n devops-demo -l app=devops-demo-api --tail=100
+kubectl logs -n devops-demo -l app=devops-todo-app --tail=100
 ```
 
 Ingress:
@@ -729,33 +729,6 @@ Type:
 ``` text
 yes
 ```
-
-------------------------------------------------------------------------
-
-# Screenshot Checklist
-
-  Screenshot           File
-  -------------------- --------------------------
-  Tool Versions        01-tools.png
-  AWS Identity         02-aws-identity.png
-  Docker Build         03-docker-build.png
-  Terraform Apply      04-terraform-apply.png
-  EKS Nodes            05-eks-nodes.png
-  App Pods             06-app-pods.png
-  App Logs             07-app-logs.png
-  IAM ServiceAccount   08-serviceaccount.png
-  ALB Controller       09-alb-controller.png
-  ALB Ingress          10-ingress.png
-  ALB Health           11-alb-health.png
-  Internal Service     12-internal-service.png
-  Monitoring Pods      13-monitoring-pods.png
-  Grafana Rollout      14-grafana-rollout.png
-  Grafana Dashboard    15-grafana-dashboard.png
-  Data Source          16-datasource.png
-  Prometheus           17-prometheus.png
-  Load Test            18-load-test.png
-  HPA Scaling          19-hpa-scaling.png
-  Final Status         20-final-status.png
 
 ------------------------------------------------------------------------
 
