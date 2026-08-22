@@ -35,6 +35,9 @@ issue hit along the way and its fix — not just the happy path.
 
 ## Architecture
 
+![Architecture diagram](./docs/updated-screenshots/devops_eks_cicd_architecture.png)
+*GitHub push → Jenkins (local, Docker) → ECR → EKS (`devops-demo` app + `monitoring` stack) → ALB → browser.*
+
 ```
 GitHub push
    │  (webhook via ngrok)
